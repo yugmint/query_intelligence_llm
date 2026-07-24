@@ -6,6 +6,28 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.2.2] — 2026-07-25
+
+Fourth-document spot check (`airlock-on-edge_woolf_default_27.pdf`, a real
+COVID-19 severity study) surfaced a `ingestion_fixed` classification bug
+(fixed there, `v0.1.3`) and two generation/reranking-side findings on this
+side. No production code changed here — findings and roadmap only.
+
+**Found:**
+- A chunk-boundary issue (title text glued onto an unrelated address
+  block on a page with no blank-line paragraph breaks) that dropped the
+  title/author chunk from the final reranked top-k for identity-type
+  questions. A fix was built and verified against this document, but
+  reverted after re-validation surfaced regressions on the already-shipped
+  Factor Analysis/EfficientNet indexes — see
+  `ingestion_fixed/docs/05-roadmap.md` v0.2.0 for the full writeup.
+- A generation reading-comprehension gap: when both a correct chunk and a
+  distractor chunk with similar-context numbers are retrieved together,
+  generation can pick the wrong one even with the right answer present in
+  context. New roadmap item, no fix attempted yet.
+
+Full report: `docs/reports/2026-07-25-airlock-paper-e2e-test.md`.
+
 ## [0.2.1] — 2026-07-24
 
 Follow-up to `v0.2.0`: closes the latency-measurement gap flagged in

@@ -1,6 +1,6 @@
 [project]
 name = "intelligent-document-ai"
-version = "0.2.1"
+version = "0.2.2"
 description = "LangGraph-orchestrated RAG chatbot: guardrails -> intent -> retrieval -> rerank -> generation -> memory."
 requires-python = ">=3.10"
 

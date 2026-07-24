@@ -112,6 +112,23 @@ features. All three shipped in the same session as `v0.0.1`.
       body vs. title/abstract) from the ingestion side, or a dedicated
       "about this document" query path that doesn't rely on similarity
       search at all. Not closing this item; downgrading its severity.
+- [ ] **Generation picks the wrong number when a distractor with
+      similar context is also in the retrieved chunks** — found
+      2026-07-25 testing a fourth real document (Hu et al. 2020,
+      COVID-19 severity study). Asked "what was the sample size?"; the
+      correctly-retrieved chunk (*"A total of 40 patients were
+      enrolled in this study"*) **and** a distractor chunk from the
+      paper's own Limitations section (*"There were a total of 120
+      COVID-19 patients in Xi'an City, and only 40 of them were treated
+      in our center"*) both made the final reranked top-k. The model
+      answered "120" — picking the wrong number despite the right one
+      being present in the same context. Not a retrieval failure (both
+      the right and wrong answer were retrieved); a generation
+      reading-comprehension gap. No fix attempted yet — candidates worth
+      trying: prompting the model to quote/cite the exact source
+      sentence before stating a number, or a numeric-fact verification
+      pass on the final answer. Full trace:
+      `docs/reports/2026-07-25-airlock-paper-e2e-test.md`.
 
 (Query rewriting — `QueryRewriter` / `process_query` — already shipped,
 landed in commit `5e12446`.)

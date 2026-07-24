@@ -126,17 +126,36 @@ first chunk/title-page content for "about this document" style
 questions, or a dedicated document-metadata lookup that bypasses
 retrieval for this query class).
 
-## 5. Cost/latency note (not measured rigorously here, worth flagging)
+## 5. Cost/latency note — measured 2026-07-24 (`scripts/measure_reranking_latency.py`)
 
-This report didn't measure latency, but the architecture change has a
-real cost: every knowledge query now runs a cross-encoder forward pass
-over `RERANK_CANDIDATES=15` (query, chunk) pairs, in addition to the
-FAISS search and the two LLM calls (intent + generation) that already
-existed. The model is small (`ms-marco-MiniLM-L-6-v2`, same weight class
-as the embedding model), and it's a local CPU/GPU forward pass rather
-than a network call, but it's not free. Worth a follow-up report
-specifically measuring added latency per query before/after, especially
-under concurrent load — not done here.
+Follow-up to the gap flagged above: measured FAISS-alone (`k=TOP_K=3`,
+the pre-reranking path) against FAISS (`k=RERANK_CANDIDATES=15`) +
+cross-encoder rerank, on the same two real indexes/question sets used
+throughout this report, CPU inference, one warm-up query excluded per
+index:
+
+| | Factor Analysis (10 q) | EfficientNet (10 q) |
+|---|---|---|
+| BEFORE (k=3, no rerank), mean | 16.9ms | 12.8ms |
+| AFTER retrieval (k=15), mean | 11.7ms | 13.2ms |
+| AFTER rerank pass alone, mean | 701.8ms | 724.2ms |
+| AFTER total, mean | 713.5ms | 737.3ms |
+| **Added latency per query, mean** | **~697ms** | **~725ms** |
+
+The FAISS search itself is unaffected by the candidate-count change
+(pulling 15 instead of 3 costs nothing measurable). The entire added
+cost is the cross-encoder forward pass, and it is **not small** — this
+report's §5 originally described the model as light enough not to
+worry about; that was wrong. ~700-725ms per query on CPU is a real,
+user-visible addition on top of whatever the two LLM calls (intent +
+generation) already cost, and it scales with `RERANK_CANDIDATES`
+(currently 15) and query volume, including under concurrent load
+(untested here — this was single-query, sequential timing, not a load
+test). If p95 end-to-end latency becomes a concern, the candidates to
+revisit are lowering `RERANK_CANDIDATES`, GPU inference for the
+cross-encoder (this measurement was CPU-only), or a smaller
+cross-encoder model — in that order, since `RERANK_CANDIDATES` is a
+one-line config change while the other two are real work.
 
 ## 6. Recommendation
 
@@ -150,4 +169,7 @@ rather than blockers:
 
 - [ ] Identity/self-referential questions ("what is this document
       called") may need a mechanism beyond reranking — see §4.
-- [ ] Actual latency measurement under the new architecture — see §5.
+- [x] Actual latency measurement under the new architecture — see §5.
+      Measured ~700-725ms added per query on CPU. Not a blocker for
+      shipping what's already shipped, but a real number to plan
+      around, not a "small model, don't worry about it" assumption.

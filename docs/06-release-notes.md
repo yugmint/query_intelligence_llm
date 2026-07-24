@@ -6,6 +6,26 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.2.1] — 2026-07-24
+
+Follow-up to `v0.2.0`: closes the latency-measurement gap flagged in
+`docs/reports/2026-07-24-reranking-validation.md` §5. No production code
+changed.
+
+**Added:**
+- `scripts/measure_reranking_latency.py` — standalone benchmark comparing
+  FAISS-alone (`k=TOP_K=3`, pre-reranking) against FAISS
+  (`k=RERANK_CANDIDATES=15`) + cross-encoder rerank, against the same two
+  real indexes/question sets used throughout the reranking validation
+  report.
+
+**Measured:**
+- Reranking adds ~700-725ms per query on CPU (the cross-encoder forward
+  pass over 15 candidates) — FAISS search itself is unaffected by the
+  larger candidate count. Corrects §5's original "small model, probably
+  fine" assumption, which was never actually measured. Full numbers and
+  what to do if this becomes a problem: report §5.
+
 ## [0.2.0] — 2026-07-24
 
 Intelligence layer, first item: reranking. First real feature addition

@@ -6,6 +6,27 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.4.3] — 2026-07-26
+
+**Added:**
+- `src/api.py` — CORS middleware (`CORSMiddleware`, wide open by
+  default, `CORS_ALLOW_ORIGINS` env override). Without this, browsers
+  silently block every request from any frontend not served from this
+  exact origin -- including the new `../frontend/index.html`, opened as
+  a plain `file://` page. Found necessary while wiring up that frontend:
+  neither API had CORS configured at all before this. Verified via a
+  real CORS preflight request with `Origin: null` (what `file://` pages
+  send) against a live server -- confirmed the right
+  `Access-Control-Allow-*` headers come back.
+
+**Also (`../frontend`):** replaced the Streamlit prototype with a
+single-file HTML/JS chat UI that talks to this API and the ingestion
+API directly -- no build step, no Python environment of its own. Each
+sidebar "conversation" maps directly onto a `session_id`; attaching a
+file routes to `/ingest` instead of `/query` and auto-calls `/reload`
+afterward, closing the exact "forgot to reload" confusion hit while
+testing the Streamlit version. See `../frontend/README.md`.
+
 ## [0.4.2] — 2026-07-26
 
 Docs/environment only — no application code changed. `EmbeddingFactory`

@@ -19,7 +19,10 @@ dev/demo/moderate traffic, not yet for long-running high-volume
 multi-user production use.
 """
 
+import os
+
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -30,6 +33,23 @@ from src.utils.auth import require_api_key
 from src.utils.logger import logger
 
 app = FastAPI(title="RAG Query API", version="0.1.0")
+
+# Without this, browsers silently block every request from any frontend
+# not served from this exact origin -- including a `file://`-opened
+# local HTML page (see ../frontend), which is the primary local-testing
+# client this API needs to support. Defaults wide open, matching that
+# use case; API-key auth (above/below) is the actual access-control
+# layer once APP_ENV is set to anything other than "development" -- CORS
+# alone was never meant to be that. Override via CORS_ALLOW_ORIGINS
+# (comma-separated) for a real deployment that wants to restrict this.
+_cors_origins = os.getenv("CORS_ALLOW_ORIGINS", "*")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] if _cors_origins == "*" else _cors_origins.split(","),
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Per-client (by IP) rate limiting, in addition to the global client-side
 # throttle already on the LLM calls themselves (src/retrieval/llm.py) --

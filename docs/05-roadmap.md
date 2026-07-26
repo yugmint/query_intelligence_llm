@@ -99,19 +99,29 @@ features. All three shipped in the same session as `v0.0.1`.
       near-duplicate/redundant chunks relative to a genuinely distinct
       relevant one), but no explicit diversity constraint exists yet —
       keep as a smaller follow-up, not urgent given reranking's results.
-- [x→⚠️] **Source-attribution failure, partially resolved.** The
+- [x] **Source-attribution failure — fixed 2026-07-26.** The
       EfficientNet report's Q1 (confidently wrong answer, a References-
-      section citation mistaken for the document's own title) is no
-      longer *wrong* after reranking — it now safely refuses. It's still
-      not *correct*, though: reranking's cross-encoder still doesn't
-      reliably surface the actual title-page chunk for identity-type
-      questions ("what is this document called"). See
-      `docs/reports/2026-07-24-reranking-validation.md` §4 for why this
-      needs a different mechanism than topical-relevance reranking —
-      likely explicit chunk-level section-role metadata (references vs.
-      body vs. title/abstract) from the ingestion side, or a dedicated
-      "about this document" query path that doesn't rely on similarity
-      search at all. Not closing this item; downgrading its severity.
+      section citation mistaken for the document's own title) went
+      wrong → safe refusal (after reranking) → now **fully correct**:
+      `ingestion_fixed` `v0.2.0` added `is_reference_section` per-chunk
+      metadata; the `rerank` node (`src/workflow/nodes/rerank.py`) now
+      drops those candidates before scoring, so a citation formatted
+      like the document's own title can no longer out-rank the real
+      thing. Re-running the EfficientNet Q1 question after re-ingesting
+      with the new metadata: exact correct title, grounded in a running
+      page-header repetition (page 5), not a citation. Full 10-question
+      regression suites for both Factor Analysis and EfficientNet: 20/20
+      correct (up from 16/20 fully-correct-or-safe before this fix —
+      see `docs/reports/2026-07-24-reranking-validation.md` for the
+      prior baseline). **Not fully general yet:** the airlock paper's
+      equivalent question ("what is the title, who are the authors")
+      still safely refuses rather than answering — that document's
+      title/author chunk has its own, different problem (a chunk-
+      boundary issue, investigated and reverted — see
+      `ingestion_fixed/docs/05-roadmap.md` v0.2.0), unrelated to
+      reference-section filtering. This fix closes the citation-
+      mistaken-for-title failure mode specifically, not identity
+      questions in general.
 - [ ] **Generation picks the wrong number when the reranked top-3
       doesn't contain the cleanest source sentence** — found 2026-07-25
       testing a fourth real document (Hu et al. 2020, COVID-19 severity

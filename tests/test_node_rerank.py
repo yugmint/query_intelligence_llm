@@ -96,3 +96,36 @@ def test_fewer_candidates_than_top_k_keeps_all_of_them():
 
     assert len(result["documents"]) == 1
     assert result["context"] == "only one"
+
+
+def test_reference_section_candidates_are_dropped_before_reranking():
+    body = Document(page_content="real body content", metadata={"is_reference_section": False})
+    citation = Document(
+        page_content="Someone. A Paper Title. Some Venue, 2020.",
+        metadata={"is_reference_section": True},
+    )
+    # Even if the reranker would score the citation highest, it should
+    # never reach it -- filtered out before scoring.
+    reranker = FakeReranker([0.1, 0.99])
+    state = {"query": "q", "rewritten_query": "", "documents": [body, citation]}
+
+    result = rerank_documents(state, make_resources(reranker=reranker))
+
+    assert result["documents"] == [body]
+    assert reranker.call_count == 1
+    assert len(reranker.calls[0]) == 1
+
+
+def test_falls_back_to_reference_candidates_if_nothing_else_available():
+    # A query genuinely about citations -- don't filter down to zero
+    # candidates just because everything retrieved is reference-section.
+    citation = Document(
+        page_content="Someone. A Paper Title. Some Venue, 2020.",
+        metadata={"is_reference_section": True},
+    )
+    reranker = FakeReranker([0.9])
+    state = {"query": "q", "rewritten_query": "", "documents": [citation]}
+
+    result = rerank_documents(state, make_resources(reranker=reranker))
+
+    assert result["documents"] == [citation]

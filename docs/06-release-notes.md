@@ -6,6 +6,33 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.3.0] — 2026-07-26
+
+Deployment-readiness push: fixed the source-attribution/identity-question
+gap that had been open since the reranking work, using
+`ingestion_fixed` `v0.2.0`'s new section-role metadata.
+
+**Fixed:**
+- `src/workflow/nodes/rerank.py` — drops `is_reference_section` chunks
+  from the candidate pool before scoring. Fixes the EfficientNet Q1
+  failure mode (a References-section citation formatted like the
+  document's own title, mistaken for it) for good: wrong → safe refusal
+  → now fully correct. Full 10-question regression suites (Factor
+  Analysis + EfficientNet): 20/20 correct, up from 16/20. Requires an
+  index rebuilt with `ingestion_fixed >= v0.2.0` to take effect — older
+  indexes won't have the metadata field and the filter silently no-ops
+  (`document.metadata.get(...)` on a missing key).
+
+**Investigated, prompt guideline added, gap remains:**
+- The distractor-number bug (airlock paper, "what was the sample
+  size?") was re-diagnosed: not a generation reading-comprehension gap
+  as first thought, but a retrieval-ranking one -- the correct source
+  sentence ranks #8/15 and never reaches the model. A general
+  numeric-grounding instruction was added to
+  `src/prompts/generation.py` anyway (harmless, may help elsewhere) but
+  confirmed (3 repeated runs) not to fix this specific case. Tracked in
+  `docs/05-roadmap.md`, not fixed.
+
 ## [0.2.2] — 2026-07-25
 
 Fourth-document spot check (`airlock-on-edge_woolf_default_27.pdf`, a real

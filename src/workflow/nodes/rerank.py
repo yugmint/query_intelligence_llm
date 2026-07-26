@@ -33,6 +33,21 @@ def rerank_documents(
     query = state.get("rewritten_query") or state["query"]
     candidates = state.get("documents", [])
 
+    # Reference-list chunks (bibliography entries) are essentially never
+    # a useful answer on their own, and their citation-style formatting
+    # ("Authors. Title. Venue, Year.") has been mistaken by generation
+    # for the document's own title -- see docs/05-roadmap.md. Drop them
+    # from the candidate pool before scoring, with a fallback: if every
+    # candidate happens to be reference-section content (e.g. a query
+    # genuinely about citations), don't filter down to nothing.
+    non_reference_candidates = [
+        document
+        for document in candidates
+        if not document.metadata.get("is_reference_section")
+    ]
+    if non_reference_candidates:
+        candidates = non_reference_candidates
+
     if not candidates:
         logger.info("No candidates to rerank.")
         return {"documents": [], "context": ""}

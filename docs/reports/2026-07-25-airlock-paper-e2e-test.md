@@ -127,6 +127,15 @@ not to glue a new paragraph onto a force-split remnant" — that heuristic
 is too coarse; whoever picks this up should look at fixing it at the
 source (better paragraph-structure preservation during PDF extraction, not
 post-hoc chunker heuristics) rather than iterating further on `_pack()`.
-Q2's distractor-number issue is a separate, generation-side problem
-untouched by any of today's changes — worth a dedicated look, not a quick
-fix.
+
+**Update (2026-07-26):** the broader identity-question gap this report
+fed into got a real, general fix — `ingestion_fixed` `v0.2.0`'s
+`is_reference_section` metadata, consumed by `RAG_Project_1` `v0.3.0`'s
+`rerank` node. It fully fixed the EfficientNet paper's equivalent
+question (was safe-refusal, now exactly correct) and re-validated clean
+across both previously-shipped 10-question suites (20/20). It does
+**not** fix this document's Q1, though — the airlock paper's title/author
+retrieval problem was always the separate chunk-boundary issue above
+(reverted, not this one), so it still safely refuses. Q2's
+distractor-number issue was re-diagnosed as retrieval-ranking, not
+generation, and remains open — see `docs/05-roadmap.md`.

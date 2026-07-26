@@ -6,6 +6,28 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.4.1] — 2026-07-26
+
+Found via real multi-turn use through the new local frontend (first
+real dogfooding of the chat flow end to end).
+
+**Fixed:**
+- `src/processing/query_rewriter.py` — the rewrite prompt told the LLM
+  to "resolve pronouns using history" with no guidance on *which*
+  referent to prefer when more than one topic had been discussed. Given
+  history that covered a paper's improvements broadly, then specifically
+  defined "spatial pyramid pooling" in the very next turn, "give me
+  detailed intuition of it" resolved to "intuition of the proposed
+  model" (the earlier, more-discussed topic) instead of "intuition of
+  spatial pyramid pooling" (what was actually named last) — a wrong,
+  repeated-earlier-answer, not a retrieval failure. Added an explicit
+  recency-priority rule ("the last thing named beats the main topic of
+  the conversation") plus a matching few-shot example. Reproduced
+  against the real LLM with the exact failing conversation, before and
+  after: 3/3 consistent correct resolution after the fix, existing
+  examples (including the prompt's own "Deep Learning book" case)
+  unaffected.
+
 ## [0.4.0] — 2026-07-26
 
 Closes out the v0.4.0 "Multi-user & production hardening" milestone in

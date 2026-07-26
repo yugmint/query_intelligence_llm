@@ -20,6 +20,19 @@ class QueryRewriter:
     """
     Singleton responsible for rewriting user queries into
     retrieval-friendly search queries.
+
+    Found and fixed 2026-07-26 via real multi-turn use through the local
+    frontend: a bare "resolve pronouns using history" instruction isn't
+    enough once more than one topic has been discussed -- given history
+    that first covered a paper's improvements broadly, then specifically
+    defined "spatial pyramid pooling", the query "detailed intuition of
+    it" got rewritten to "intuition of the proposed model" (the earlier,
+    more-discussed topic) instead of "intuition of spatial pyramid
+    pooling" (what was actually named last). Fixed by adding an explicit
+    recency-priority rule and a matching example to the prompt below.
+    Reproduced directly against the real LLM (not just unit tests with a
+    fake) before and after; 3/3 consistent after the fix. See
+    docs/06-release-notes.md.
     """
     _instance: Optional['QueryRewriter'] = None
 
@@ -121,6 +134,12 @@ not a sentence, not a request, not an answer.
 Rules:
 - Resolve pronouns and references (it, this, that, they, those, etc.)
   using the conversation history below.
+- When more than one thing has been discussed, resolve the pronoun to
+  the MOST RECENTLY mentioned specific noun/topic -- the last thing
+  actually named -- not an earlier, broader, or more general one, even
+  if that earlier topic was discussed at greater length. Recency beats
+  salience: prefer "the last thing named" over "the main thing this
+  conversation has been about."
 - Do NOT invent facts that aren't in the history.
 - Do NOT answer the question.
 - Do NOT phrase it as a request or instruction (e.g. never write
@@ -141,6 +160,16 @@ Output: {{"rewritten_query": "Summary of the book"}}
 History: User previously asked about onboarding steps for new hires.
 Query: "What about the second one?"
 Output: {{"rewritten_query": "Second onboarding step for new hires"}}
+
+History: User asked for an overview of a paper and got a broad answer
+about its general improvements. Then, in the very next turn, user
+asked specifically "What is spatial pyramid pooling?" and got a
+definition of it.
+Query: "Give me detailed intuition of it"
+Output: {{"rewritten_query": "Detailed intuition of spatial pyramid pooling"}}
+(Not "detailed intuition of the paper's improvements" -- that was the
+earlier, broader topic; spatial pyramid pooling is what was actually
+named last.)
 
 Return ONLY valid JSON in this exact shape, with no extra text and no
 markdown fences:

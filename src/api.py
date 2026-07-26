@@ -53,7 +53,22 @@ def query(request: QueryRequest):
     if not request.query or not request.query.strip():
         raise HTTPException(status_code=400, detail="query must not be empty")
 
-    state = rag.ask(request.query, session_id=request.session_id, return_state=True)
+    try:
+        state = rag.ask(request.query, session_id=request.session_id, return_state=True)
+    except Exception as exc:
+        # The LLM call inside this workflow already retries transient
+        # failures (LLMFactory's max_retries + client-side rate limiting --
+        # see src/retrieval/llm.py); anything that still reaches here is
+        # either a genuinely exhausted retry budget or an unrelated bug.
+        # Either way, callers should see a clean 503, not an unhandled
+        # exception's stack trace. Confirmed necessary by an actual crash
+        # under concurrent load -- see
+        # docs/reports/2026-07-26-performance-and-deployment-readiness.md.
+        logger.error(f"Query failed for session '{request.session_id}': {exc}")
+        raise HTTPException(
+            status_code=503,
+            detail="The assistant is temporarily unavailable. Please try again shortly.",
+        ) from exc
 
     return QueryResponse(
         answer=state.get("answer", ""),

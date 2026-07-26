@@ -57,7 +57,7 @@ requests==2.32.4
 # ==========================
 # LLM APIs
 # ==========================
-langchain-groq==0.3.6
+langchain-groq==0.3.6  # Cerebras and Gemini were both evaluated as of 2026-07-26 and ruled out (billing/privacy) -- see docs/reports/2026-07-26-performance-and-deployment-readiness.md
 
 # ==========================
 # API service

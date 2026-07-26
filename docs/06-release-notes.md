@@ -6,6 +6,37 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.3.1] — 2026-07-26
+
+Deployment-readiness push, part 2: fixed the concurrency crash found
+while writing the performance/deployment-readiness report
+(`docs/reports/2026-07-26-performance-and-deployment-readiness.md`).
+
+**Fixed:**
+- `src/retrieval/llm.py` — `LLMFactory` now attaches a client-side
+  `InMemoryRateLimiter` (tuned to stay under Groq's 6,000 TPM ceiling
+  for `llama-3.1-8b-instant`, with margin) plus `max_retries=3` and a
+  30s `request_timeout` to the shared `ChatGroq` instance. Fixes a real,
+  reproduced crash: 5 concurrent requests previously failed on request 2
+  with an unhandled `groq.RateLimitError`. Re-ran the same scenario
+  after the fix: no crash, requests queue and complete instead.
+- `src/api.py` — `/query` now catches any exception that still reaches
+  it (exhausted retries, or an unrelated bug) and returns a clean 503
+  instead of an unhandled 500.
+
+**Evaluated and explicitly rejected as alternatives:**
+- Self-hosting an open-source model — doesn't fit the $0 budget in
+  practice (moves cost to compute; CPU-only inference of an 8B+ model is
+  dramatically slower than Groq's specialized hardware).
+- Switching to Cerebras — blocked on this account's billing/org-type
+  status (`402 Payment required` on every model), and its free tier is
+  being retired 2026-08-17 regardless (card-on-file required after).
+- Switching to Google Gemini — free-tier traffic may be used to improve
+  Google's products; ruled unacceptable for a public-facing service.
+  (Confirmed Groq itself already has a strict no-training policy, SOC 2
+  Type II — staying on Groq turned out to be the most privacy-safe
+  choice too, not just the simplest.)
+
 ## [0.3.0] — 2026-07-26
 
 Deployment-readiness push: fixed the source-attribution/identity-question

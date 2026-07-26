@@ -163,14 +163,40 @@ landed in commit `5e12446`.)
 
 ## v0.4.0 — Multi-user & production hardening
 
+- [x] **LLM-call resilience — fixed 2026-07-26.** Found via a real test,
+      not a hypothetical: 5 concurrent requests crashed Groq's free tier
+      (6,000 TPM for `llama-3.1-8b-instant`) with an unhandled
+      `RateLimitError` on request 2 — see
+      `docs/reports/2026-07-26-performance-and-deployment-readiness.md`
+      §2. Considered switching providers first (Cerebras: blocked on
+      account billing status, and its free tier is being retired
+      2026-08-17 regardless; Google Gemini: free-tier traffic may be used
+      to improve Google's products, ruled unacceptable for a public
+      service) — confirmed Groq already has a strict no-training policy
+      (SOC 2 Type II), so hardening the existing provider was both the
+      simplest and most privacy-safe fix, not a compromise. `LLMFactory`
+      (`src/retrieval/llm.py`) now attaches a client-side
+      `InMemoryRateLimiter` (tuned to stay under the 6,000 TPM ceiling
+      with margin) plus `max_retries=3` and a 30s timeout; `src/api.py`'s
+      `/query` handler catches any exception that still gets through and
+      returns a clean 503 instead of an unhandled 500. Re-ran the exact
+      failing scenario: no crash, requests queue and complete instead.
+      Honest remaining limit: this doesn't raise the $0-budget ceiling,
+      it just fails gracefully instead of hard — sustained heavy traffic
+      still means real queuing delay.
 - [ ] Persistent, bounded session memory (replace the in-memory dict; cap
       or summarize long conversations).
-- [ ] Rate limiting on the API.
+- [ ] Rate limiting on the API (per-IP/per-key request limiting at the
+      API layer, as defense in depth beyond the LLM-call throttling
+      above — different layer, same goal).
 - [ ] Auto-trigger `/reload` from the ingestion side after a successful
       `/ingest`, instead of requiring a manual call (see the shared
       `docker-compose.yml`'s comments — deliberately not built yet).
 - [ ] Make `RAGService` tolerate "no index yet" at startup instead of
       crash-looping against an empty shared volume.
+- [ ] Auth fail-closed: refuse to start (or log fatal) if
+      `RAG_API_KEY`/`INGESTION_API_KEY` is unset outside dev, instead of
+      silently running unauthenticated.
 
 ## v0.5.0 — Enterprise features (README Phase 4)
 

@@ -6,6 +6,37 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.4.2] — 2026-07-26
+
+Docs/environment only — no application code changed. `EmbeddingFactory`
+and the reranker already auto-detected CUDA; the only gap was which
+`torch` build happens to be installed.
+
+**Added:**
+- `docs/03-development-guide.md` — documents the optional local-GPU
+  install (`torch==2.7.1+cu126`/`torchvision==0.22.1+cu126` from
+  PyTorch's own index, matching the exact pinned versions), including a
+  Windows-specific gotcha: `pip install` can fail with `Access is
+  denied` on a `torch\_C...pyd` file if an IDE (VS Code/Pylance) has
+  the venv open and is holding a lock on the installed package's binary
+  files — took two failed install attempts to diagnose.
+- `docs/reports/2026-07-26-performance-and-deployment-readiness.md` —
+  real before/after: reranking dropped from ~700-725ms (CPU) to
+  **~125-180ms** (GPU, GTX 1650/4GB), a genuine 4-5x speedup on the
+  dominant cost in the retrieval path. Trade-off: embedding-model
+  startup roughly doubled (~17s -> ~30s, one-time CUDA context init).
+
+**Deliberately unchanged:** `requirements.txt` stays pinned to
+CPU-only `torch` — installs cleanly everywhere (the `v0.4.0` CI, most
+cloud deployment targets, machines without an NVIDIA GPU). This is a
+local-dev-only opt-in, not a new default.
+
+**Validated:** full test suite (83 tests) + the real 20-question
+regression suite re-run on GPU: same pattern as the CPU baseline
+(19/20 correct, the one gap reproducing the already-documented LLM
+sampling variance from `v0.4.0`, not a new regression) — confirms the
+hardware change affects speed only, not answer quality.
+
 ## [0.4.1] — 2026-07-26
 
 Found via real multi-turn use through the new local frontend (first

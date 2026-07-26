@@ -21,6 +21,48 @@ directly — see `07-design-decisions.md` for why both paths exist now):
 { "grok_api_key": "YOUR_GROQ_API_KEY" }
 ```
 
+### Optional: local GPU acceleration
+
+`requirements.txt` pins plain `torch==2.7.1`, which resolves to the
+**CPU-only** build from PyPI — deliberately, since that's the only build
+that installs cleanly everywhere (CI runners, most cloud deployment
+targets, machines with no NVIDIA GPU). `EmbeddingFactory` and the
+reranker both already auto-detect CUDA at runtime with zero code
+changes needed — the only thing gating GPU use is which `torch` build
+is actually installed.
+
+If you have a working NVIDIA GPU + driver locally and want faster
+retrieval during dev, install the CUDA build **on top of** the regular
+install, matching the exact pinned version (don't let this drift to a
+different `torch`/`torchvision` version — that risks breaking
+compatibility with `sentence-transformers`/`transformers`):
+
+```bash
+pip install torch==2.7.1+cu126 torchvision==0.22.1+cu126 --index-url https://download.pytorch.org/whl/cu126
+```
+
+(`cu126` assumes a driver supporting CUDA 12.6+; check `nvidia-smi`'s
+reported CUDA version and pick a matching build from
+https://download.pytorch.org/whl/torch/ if different. This is a ~2.7GB
+download.)
+
+Real measured effect (GTX 1650, 4GB VRAM) — reranking (the dominant
+cost in the retrieval path, see
+`docs/reports/2026-07-24-reranking-validation.md` §5) dropped from
+~700-725ms to **~125-180ms** per query, a genuine 4-5x speedup.
+Trade-off: embedding-model startup went from ~17s to ~30s (one-time
+CUDA context initialization, paid once at process start, not
+per-query). This is purely a local-dev nicety — don't expect it to
+carry into a $0-budget cloud deployment target, which almost certainly
+won't have GPU access either.
+
+**Windows-specific gotcha**: if `pip install` for the CUDA build fails
+with `OSError: ... Access is denied` on a `torch\_C...pyd` file, close
+VS Code (or any IDE with this venv selected as its Python interpreter)
+first — Pylance/the Python extension holds a lock on installed
+packages' binary files while indexing them, and Windows won't let pip
+replace a file that's open elsewhere.
+
 ## You need a FAISS index before anything works
 
 This repo has **no working ingestion code of its own** (see §8 of

@@ -98,6 +98,31 @@ changes since then don't touch this):
 Reranking, not the LLM, is the dominant cost. This matches the earlier
 validation report's finding, now reconfirmed end-to-end.
 
+**Update (2026-07-26, later same day) — optional local GPU
+acceleration.** All of the above was measured CPU-only, per this
+report's own header. Installed CUDA-enabled `torch`/`torchvision`
+locally (matching the exact pinned versions, `+cu126`; see
+`docs/03-development-guide.md` for the opt-in install command and a
+Windows-specific gotcha it took two failed attempts to diagnose — a
+`.pyd` file locked by VS Code's Python extension). `EmbeddingFactory`
+and the reranker both already auto-detected CUDA with zero code
+changes. Re-measured with `scripts/measure_reranking_latency.py`:
+
+| Stage | CPU | GPU (GTX 1650, 4GB) |
+|---|---|---|
+| Cross-encoder rerank (15→3) | ~700-725ms | **~125-180ms** |
+
+A genuine 4-5x speedup on the dominant cost in the retrieval path.
+Trade-off: embedding-model startup went from ~17s to ~30s (one-time
+CUDA context init, paid once at process start). This is a local-dev-only
+enhancement — `requirements.txt` deliberately stays pinned to the
+CPU-only build (installing cleanly everywhere, including the GitHub
+Actions CI added in `v0.4.0`) — not something to assume carries into
+the eventual $0-budget cloud deployment target, which likely won't have
+GPU access either. Full 20-question regression suite re-run after
+switching to confirm answer quality is unaffected (same models, just
+different hardware) — see release notes for the result.
+
 ### Accuracy
 
 Full 10-question regression suites, re-run today after the section-role

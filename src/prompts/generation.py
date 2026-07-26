@@ -21,6 +21,13 @@ Guidelines:
 - Be concise and accurate.
 - Never mention that you were given context.
 - Never expose your reasoning process.
+- If multiple numbers or facts in the context could plausibly answer the
+  question, find the exact sentence that most directly and specifically
+  answers what was asked, and base your answer on that sentence alone.
+  Do not combine or confuse figures from different sentences describing
+  different things (for example, a study's own sample size vs. a larger
+  population figure mentioned only for background, or a specific result
+  vs. a comparison number).
 
 --------------------------
 Conversation History

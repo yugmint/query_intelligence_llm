@@ -75,14 +75,19 @@ cleaner "Authorship contributions" section on page 11, dropping it from
 the final top-3. Result: an honest *"I don't know"* / partial-initials
 answer instead of the full title and author names.
 
-**Q2 — generation picked the wrong number from a distractor.** Both the
-correct chunk (*"A total of 40 patients were enrolled in this study"*)
-**and** a distractor from the Limitations section (*"There were a total of
-120 COVID-19 patients in Xi'an City, and only 40 of them were treated in
-our center"*) made it into the final reranked context together. The model
-answered "120 patients" — wrong, despite the right answer being present in
-the same context. This is a generation reading-comprehension gap, not a
-retrieval miss; tracked in `RAG_Project_1/docs/05-roadmap.md` v0.2.0.
+**Q2 — generation picked the wrong number from a distractor.** The model
+answered "120 patients" instead of "40". **Correction (2026-07-25, later
+same day):** originally diagnosed as a generation reading-comprehension
+gap (assumed both the correct chunk and the distractor were in context).
+Traced the actual context: the clean sentence (*"Results: A total of 40
+patients were enrolled in this study, of whom 19 were mild and 21 were
+severe"*) ranks #8/15 after reranking and never reaches the `TOP_K=3` cut
+— the model only ever saw the ambiguous Limitations-section sentence
+(*"There were a total of 120 COVID-19 patients in Xi'an City, and only 40
+of them were treated in our center"*). This is a retrieval-ranking
+problem, not a generation one — no prompt fix can ground an answer in text
+the model never received (tried anyway, confirmed no effect via 3 repeated
+runs). Tracked in `RAG_Project_1/docs/05-roadmap.md` v0.2.0.
 
 ## 4. Chunk-boundary fix attempted and reverted
 

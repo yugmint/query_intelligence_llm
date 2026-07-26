@@ -112,23 +112,36 @@ features. All three shipped in the same session as `v0.0.1`.
       body vs. title/abstract) from the ingestion side, or a dedicated
       "about this document" query path that doesn't rely on similarity
       search at all. Not closing this item; downgrading its severity.
-- [ ] **Generation picks the wrong number when a distractor with
-      similar context is also in the retrieved chunks** — found
-      2026-07-25 testing a fourth real document (Hu et al. 2020,
-      COVID-19 severity study). Asked "what was the sample size?"; the
-      correctly-retrieved chunk (*"A total of 40 patients were
-      enrolled in this study"*) **and** a distractor chunk from the
-      paper's own Limitations section (*"There were a total of 120
+- [ ] **Generation picks the wrong number when the reranked top-3
+      doesn't contain the cleanest source sentence** — found 2026-07-25
+      testing a fourth real document (Hu et al. 2020, COVID-19 severity
+      study). Asked "what was the sample size?"; the model answered
+      "120" instead of the correct "40". **Corrected diagnosis
+      (2026-07-25, later same day):** originally logged as a generation
+      reading-comprehension gap (both numbers assumed present in
+      context) — that was wrong. Traced the actual context passed to
+      the LLM: the clean, unambiguous sentence (*"Results: A total of
+      40 patients were enrolled in this study, of whom 19 were mild and
+      21 were severe"*) ranks **#8 of 15** after cross-encoder
+      reranking and never makes the `TOP_K=3` cut. The only sample-size
+      information the model actually receives is the ambiguous
+      Limitations-section sentence (*"There were a total of 120
       COVID-19 patients in Xi'an City, and only 40 of them were treated
-      in our center"*) both made the final reranked top-k. The model
-      answered "120" — picking the wrong number despite the right one
-      being present in the same context. Not a retrieval failure (both
-      the right and wrong answer were retrieved); a generation
-      reading-comprehension gap. No fix attempted yet — candidates worth
-      trying: prompting the model to quote/cite the exact source
-      sentence before stating a number, or a numeric-fact verification
-      pass on the final answer. Full trace:
-      `docs/reports/2026-07-25-airlock-paper-e2e-test.md`.
+      in our center"*) — so this is a retrieval-ranking problem, not a
+      generation one. **Tried:** a prompt guideline in
+      `src/prompts/generation.py` instructing the model to find the one
+      sentence that most directly answers a numeric question rather
+      than blending figures from different sentences — verified via 3
+      repeated runs that it does **not** fix this specific case (no
+      source text to ground on, so no prompt instruction can help), but
+      kept since it's harmless and may help in cases where the right
+      information *is* present alongside a distractor. Real fix would
+      need retrieval-ranking work (e.g. raising `TOP_K`/
+      `RERANK_CANDIDATES` — real latency cost, see
+      `docs/reports/2026-07-24-reranking-validation.md` §5 — with no
+      guarantee it resolves the ranking itself) or a dedicated numeric
+      question path. Not attempted; deprioritized relative to shipping.
+      Full trace: `docs/reports/2026-07-25-airlock-paper-e2e-test.md`.
 
 (Query rewriting — `QueryRewriter` / `process_query` — already shipped,
 landed in commit `5e12446`.)

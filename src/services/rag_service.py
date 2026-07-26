@@ -1,3 +1,6 @@
+import os
+from collections import OrderedDict
+
 from langchain_core.chat_history import InMemoryChatMessageHistory
 
 from src.retrieval.memory import get_memory
@@ -12,6 +15,18 @@ from src.utils.logger import logger
 
 DEFAULT_SESSION_ID = "default"
 
+# Bounds the in-memory session store so public traffic with
+# client-generated session_ids can't grow it indefinitely (a slow memory
+# leak that's trivial to trigger -- send N distinct session_ids). LRU
+# eviction: the least-recently-used session is dropped once the store is
+# full, not the oldest-created one, so an active conversation is never
+# evicted out from under it as long as it's still being used. 1000 is a
+# generous default for a single small-instance deployment; override via
+# env var if that's ever wrong for the actual traffic shape. See
+# docs/05-roadmap.md and
+# docs/reports/2026-07-26-performance-and-deployment-readiness.md.
+MAX_SESSIONS = int(os.getenv("RAG_MAX_SESSIONS", "1000"))
+
 
 class RAGService:
     """
@@ -24,9 +39,12 @@ class RAGService:
     before.
 
     Note: this in-memory session store is per-process and non-persistent
-    (lost on restart) and has no eviction -- fine for dev/demo traffic,
-    not yet a real answer for long-running multi-user production use. See
-    docs/05-roadmap.md.
+    (lost on restart) -- fine for dev/demo/moderate traffic, not yet a
+    real answer for long-running multi-instance production use (would
+    need a shared backend, e.g. Redis, to survive restarts or work across
+    multiple instances). It is, however, bounded (see `MAX_SESSIONS`) --
+    unlike an unbounded dict, it can't grow without limit under public
+    traffic. See docs/05-roadmap.md.
     """
 
     def __init__(self):
@@ -34,8 +52,9 @@ class RAGService:
         logger.info("=" * 100)
         logger.info("Initializing RAG Service...")
 
-        # session_id -> InMemoryChatMessageHistory, created lazily
-        self._sessions: dict[str, InMemoryChatMessageHistory] = {}
+        # session_id -> InMemoryChatMessageHistory, created lazily,
+        # bounded + LRU-evicted -- see MAX_SESSIONS above.
+        self._sessions: "OrderedDict[str, InMemoryChatMessageHistory]" = OrderedDict()
 
         # Initialize shared resources (llm/embeddings/vectorstore/retriever --
         # NOT memory, which is per-session, see workflow/resources.py)
@@ -47,12 +66,34 @@ class RAGService:
         logger.info("RAG Service initialized successfully.")
         logger.info("=" * 100)
 
-    def _get_session_memory(self, session_id: str) -> InMemoryChatMessageHistory:
-        if session_id not in self._sessions:
-            logger.debug(f"Creating new conversation memory for session '{session_id}'.")
-            self._sessions[session_id] = get_memory()
+    def _set_session(self, session_id: str, memory: InMemoryChatMessageHistory) -> None:
+        """
+        Insert/replace a session's memory, evicting the least-recently-used
+        entry first if the store is already at `MAX_SESSIONS`. Shared by
+        both session creation and `reset_memory` so neither path can
+        bypass the bound.
+        """
 
-        return self._sessions[session_id]
+        if session_id not in self._sessions and len(self._sessions) >= MAX_SESSIONS:
+            evicted_id, _ = self._sessions.popitem(last=False)
+            logger.info(
+                f"Session store at capacity ({MAX_SESSIONS}); "
+                f"evicted least-recently-used session '{evicted_id}'."
+            )
+
+        self._sessions[session_id] = memory
+        self._sessions.move_to_end(session_id)
+
+    def _get_session_memory(self, session_id: str) -> InMemoryChatMessageHistory:
+        if session_id in self._sessions:
+            self._sessions.move_to_end(session_id)
+            return self._sessions[session_id]
+
+        logger.debug(f"Creating new conversation memory for session '{session_id}'.")
+        memory = get_memory()
+        self._set_session(session_id, memory)
+
+        return memory
 
     def ask(
         self,
@@ -84,6 +125,29 @@ class RAGService:
         logger.info("")
         logger.info("=" * 100)
         logger.info(f"New Query [session={session_id}] : {query}")
+
+        if self.resources.retriever is None:
+            # No FAISS index loaded yet (fresh shared volume, ingestion
+            # hasn't run yet) -- see VectorStoreFactory.load. Answer
+            # clearly instead of crashing inside the retrieve node, and
+            # keep the service itself up (so /health still reports OK and
+            # container orchestration doesn't restart-loop it) while
+            # waiting for a first ingestion run + reload_index() call.
+            # See docs/05-roadmap.md.
+            logger.warning("No FAISS index loaded -- refusing to answer.")
+            answer = (
+                "I don't have any documents loaded yet, so I can't answer "
+                "questions right now. Please try again shortly."
+            )
+            if return_state:
+                return {
+                    "query": query,
+                    "answer": answer,
+                    "intent": "",
+                    "status": "no_index",
+                    "session_id": session_id,
+                }
+            return answer
 
         memory = self._get_session_memory(session_id)
         chat_history = format_chat_history(memory.messages)
@@ -130,7 +194,7 @@ class RAGService:
 
         logger.info(f"Resetting conversation memory for session '{session_id}'.")
 
-        self._sessions[session_id] = get_memory()
+        self._set_session(session_id, get_memory())
 
         logger.info("Conversation memory cleared.")
 
@@ -148,7 +212,16 @@ class RAGService:
 
         logger.info("Reloading vector index from disk...")
 
-        self.resources.vectorstore = VectorStoreFactory.load(self.resources.embeddings)
-        self.resources.retriever = RetrieverFactory.build(self.resources.vectorstore)
+        vectorstore = VectorStoreFactory.load(self.resources.embeddings)
+        self.resources.vectorstore = vectorstore
+        self.resources.retriever = (
+            RetrieverFactory.build(vectorstore) if vectorstore is not None else None
+        )
 
-        logger.info("Vector index reloaded.")
+        if vectorstore is None:
+            logger.warning(
+                "reload_index(): still no FAISS index found -- staying "
+                "in 'no index loaded' mode."
+            )
+        else:
+            logger.info("Vector index reloaded.")

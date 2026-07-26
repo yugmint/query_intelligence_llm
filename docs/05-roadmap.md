@@ -184,19 +184,53 @@ landed in commit `5e12446`.)
       Honest remaining limit: this doesn't raise the $0-budget ceiling,
       it just fails gracefully instead of hard — sustained heavy traffic
       still means real queuing delay.
-- [ ] Persistent, bounded session memory (replace the in-memory dict; cap
-      or summarize long conversations).
-- [ ] Rate limiting on the API (per-IP/per-key request limiting at the
-      API layer, as defense in depth beyond the LLM-call throttling
-      above — different layer, same goal).
-- [ ] Auto-trigger `/reload` from the ingestion side after a successful
-      `/ingest`, instead of requiring a manual call (see the shared
-      `docker-compose.yml`'s comments — deliberately not built yet).
-- [ ] Make `RAGService` tolerate "no index yet" at startup instead of
-      crash-looping against an empty shared volume.
-- [ ] Auth fail-closed: refuse to start (or log fatal) if
-      `RAG_API_KEY`/`INGESTION_API_KEY` is unset outside dev, instead of
-      silently running unauthenticated.
+- [x] **Bounded session memory — fixed 2026-07-26.** `RAGService._sessions`
+      was a plain dict, one entry per distinct `session_id`, never
+      evicted -- public traffic with client-generated session IDs could
+      grow it indefinitely (trivial to trigger: send N distinct IDs).
+      Replaced with an `OrderedDict` + LRU eviction (`MAX_SESSIONS=1000`
+      default, `RAG_MAX_SESSIONS` env override) -- the least-recently-used
+      session is dropped once full, so an active conversation is never
+      evicted out from under it. `reset_memory` routed through the same
+      bounded-insert path so it can't bypass the cap. Not persistent
+      across restarts (still in-process) -- that would need a shared
+      backend (Redis) and wasn't needed at current scale. 6 new tests.
+- [x] **Rate limiting on the API — fixed 2026-07-26.** Per-client (IP)
+      limits via `slowapi` (in-memory backend, no Redis needed at this
+      scale): `/query` at 10/minute, `/ingest` at 5/minute (stricter --
+      each call is ~3s of real CPU-bound embedding work, not just an LLM
+      call). Defense in depth beyond the LLM-call throttling above --
+      that protects the shared Groq quota from the *aggregate* of all
+      clients; this protects the service itself from any *single*
+      client hammering it with requests that never even reach the LLM.
+      Verified against the real endpoints: exact request counts allowed
+      through, clean 429s after.
+- [x] **Auto-reload after ingest — fixed 2026-07-26.** `ingestion_fixed`'s
+      `/ingest` now POSTs to this API's `/reload` automatically after a
+      successful ingestion, via `RAG_RELOAD_URL` (opt-in — unset means
+      the old manual-call behavior, unchanged). Best-effort: a failed
+      notification logs a warning and does *not* fail the `/ingest`
+      call, since the FAISS write already succeeded by then. Verified
+      against a real running server, including the auth-failure path
+      (wrong key -> clean "failed: 401..." status, not a crash). Wired
+      into the shared `docker-compose.yml`.
+- [x] **`RAGService` tolerates "no index yet" — fixed 2026-07-26.**
+      `VectorStoreFactory.load` now returns `None` (checking for
+      `index.faiss` explicitly, not catching-and-guessing from FAISS's
+      generic `RuntimeError`) instead of raising when no index exists
+      yet at the configured path. `build_resources()`/`RAGService.ask()`
+      handle `retriever=None` by answering "I don't have any documents
+      loaded yet" instead of crashing -- the service stays up, `/health`
+      still reports OK, and `reload_index()` recovers cleanly once a
+      real index exists. Verified end-to-end (missing index -> graceful
+      answer -> reload -> real answer, no restart needed). This was the
+      exact rough edge `docker-compose.yml` documented as unresolved.
+- [x] **Auth fail-closed — fixed 2026-07-26.** Outside `APP_ENV=development`
+      (the default, preserving today's no-env-vars-needed local workflow),
+      a missing `RAG_API_KEY`/`INGESTION_API_KEY` is now a startup-time
+      `RuntimeError`, not a warn-and-allow-everything no-op -- a single
+      missing env var in deployment config can no longer silently give
+      public unauthenticated access. Applied identically to both APIs.
 
 ## v0.5.0 — Enterprise features (README Phase 4)
 
@@ -210,7 +244,11 @@ landed in commit `5e12446`.)
 
 ## Unscheduled
 
-- [ ] CI (GitHub Actions): run `pytest tests/ -v` on every push.
+- [x] **CI (GitHub Actions) — added 2026-07-26.**
+      `.github/workflows/tests.yml` runs `pytest tests/ -v` on every
+      push/PR. No credentials needed -- the fast suite uses fakes for
+      the LLM/retriever/reranker, verified locally with all relevant
+      env vars cleared before adding the workflow.
 - [ ] Agentic Intelligence (README Phase 5) — multi-agent, tool calling,
       web search. Deliberately not scheduled into a version yet; too far
       out to commit to a shape.

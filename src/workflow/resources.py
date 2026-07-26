@@ -32,6 +32,12 @@ class RAGResources:
 def build_resources() -> RAGResources:
     """
     Build all shared resources once.
+
+    `vectorstore`/`retriever` may both be None if no FAISS index exists
+    yet at startup (see VectorStoreFactory.load) -- deliberately not
+    fatal, so the service can still start and serve /health while
+    waiting for a first ingestion run. RAGService.ask() checks for this
+    and returns a clear error rather than crashing on a None retriever.
     """
 
     # Build once
@@ -40,7 +46,7 @@ def build_resources() -> RAGResources:
     # Reuse the same embedding instance
     vectorstore = VectorStoreFactory.load(embeddings)
 
-    retriever = RetrieverFactory.build(vectorstore)
+    retriever = RetrieverFactory.build(vectorstore) if vectorstore is not None else None
 
     reranker = RerankerFactory.get()
 

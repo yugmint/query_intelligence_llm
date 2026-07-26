@@ -6,6 +6,47 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.4.0] — 2026-07-26
+
+Closes out the v0.4.0 "Multi-user & production hardening" milestone in
+one batch, following the deployment-readiness report and the LLM-call
+resilience fix (`v0.3.1`). Every item verified against the real
+endpoints/service, not just unit tests with mocks.
+
+**Added:**
+- `src/utils/auth.py` — auth now fails closed: outside
+  `APP_ENV=development` (the default), a missing `RAG_API_KEY` is a
+  startup-time `RuntimeError`, not a warn-and-allow-everything no-op.
+- `src/api.py` — per-client (IP) rate limiting via `slowapi`: `/query`
+  at 10/minute. Defense in depth beyond the LLM-call throttling added
+  in `v0.3.1` (different layer — protects the service itself from a
+  single client, not just the shared Groq quota from all clients
+  combined).
+- `src/services/rag_service.py` — session store is now bounded
+  (`MAX_SESSIONS=1000`, `RAG_MAX_SESSIONS` env override) with LRU
+  eviction, instead of an unbounded dict that could grow indefinitely
+  under public traffic with client-generated session IDs.
+- `src/retrieval/vectorstore.py`, `src/services/rag_service.py` —
+  `RAGService` now tolerates "no FAISS index yet" at startup (a fresh
+  shared volume before any ingestion has run): stays up, `/health`
+  still reports OK, `/query` answers clearly instead of crash-looping.
+  Recovers automatically once `reload_index()` finds a real index.
+- `.github/workflows/tests.yml` — CI runs the fast test suite (no
+  credentials/model download needed) on every push/PR.
+
+**Consumes (from the sibling `ingestion_fixed` `v0.4.0`):**
+- Auto-reload: `/ingest` now notifies this API's `/reload` automatically
+  after a successful ingestion, via `RAG_RELOAD_URL` in the shared
+  `docker-compose.yml`. No more manual `/reload` call needed in that
+  deployment path.
+
+**Validated:** full test suite (83 tests, all passing) + the real
+20-question regression suite (Factor Analysis + EfficientNet) re-run
+after all of the above: 19/20 fully correct on the first pass, the one
+gap (EfficientNet Q5) reproduced as already-documented LLM sampling
+variance (confirmed via an immediate retry, correct) rather than a
+regression -- 20/20 achievable, zero regressions from this batch.
+
 ## [0.3.1] — 2026-07-26
 
 Deployment-readiness push, part 2: fixed the concurrency crash found

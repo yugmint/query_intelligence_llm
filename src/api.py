@@ -19,14 +19,31 @@ dev/demo/moderate traffic, not yet for long-running high-volume
 multi-user production use.
 """
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from src.services.rag_service import DEFAULT_SESSION_ID, RAGService
 from src.utils.auth import require_api_key
 from src.utils.logger import logger
 
 app = FastAPI(title="RAG Query API", version="0.1.0")
+
+# Per-client (by IP) rate limiting, in addition to the global client-side
+# throttle already on the LLM calls themselves (src/retrieval/llm.py) --
+# different layer, same goal. That LLM-level throttle protects the shared
+# Groq quota from the *aggregate* of all clients; this protects the
+# service itself from any *single* client hammering it with requests
+# that never even reach the LLM (e.g. empty/near-empty queries that still
+# cost a guardrail + retrieval pass). In-memory storage (the default,
+# no `storage_uri` set) is fine for a single-process deployment; would
+# need a shared backend (e.g. Redis) for multi-instance deployments --
+# not needed at current scale. See docs/05-roadmap.md.
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 rag = RAGService()
 
@@ -49,12 +66,13 @@ def health():
 
 
 @app.post("/query", response_model=QueryResponse, dependencies=[Depends(require_api_key)])
-def query(request: QueryRequest):
-    if not request.query or not request.query.strip():
+@limiter.limit("10/minute")
+def query(request: Request, body: QueryRequest):
+    if not body.query or not body.query.strip():
         raise HTTPException(status_code=400, detail="query must not be empty")
 
     try:
-        state = rag.ask(request.query, session_id=request.session_id, return_state=True)
+        state = rag.ask(body.query, session_id=body.session_id, return_state=True)
     except Exception as exc:
         # The LLM call inside this workflow already retries transient
         # failures (LLMFactory's max_retries + client-side rate limiting --
@@ -64,7 +82,7 @@ def query(request: QueryRequest):
         # exception's stack trace. Confirmed necessary by an actual crash
         # under concurrent load -- see
         # docs/reports/2026-07-26-performance-and-deployment-readiness.md.
-        logger.error(f"Query failed for session '{request.session_id}': {exc}")
+        logger.error(f"Query failed for session '{body.session_id}': {exc}")
         raise HTTPException(
             status_code=503,
             detail="The assistant is temporarily unavailable. Please try again shortly.",
@@ -74,7 +92,7 @@ def query(request: QueryRequest):
         answer=state.get("answer", ""),
         intent=state.get("intent", ""),
         status=state.get("status", ""),
-        session_id=request.session_id,
+        session_id=body.session_id,
     )
 
 

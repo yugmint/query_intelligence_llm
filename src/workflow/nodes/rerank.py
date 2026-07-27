@@ -1,4 +1,4 @@
-from src.retrieval.config import TOP_K
+from src.retrieval.config import TOP_K, TOP_K_NUMERIC
 from src.workflow.resources import RAGResources
 from src.workflow.state import RAGState
 
@@ -65,7 +65,13 @@ def rerank_documents(
         reverse=True,
     )
 
-    top_documents = [document for _score, document in ranked[:TOP_K]]
+    # Numeric questions get a wider TOP_K -- the whole reason
+    # retrieve_context.py widened the candidate pool for them in the
+    # first place is that the correct chunk can rank well outside the
+    # default TOP_K=3 even after reranking. See RERANK_CANDIDATES_NUMERIC/
+    # TOP_K_NUMERIC in src/retrieval/config.py.
+    top_k = TOP_K_NUMERIC if state.get("is_numeric_question") else TOP_K
+    top_documents = [document for _score, document in ranked[:top_k]]
 
     context = "\n\n".join(
         document.page_content
@@ -77,7 +83,7 @@ def rerank_documents(
     # ------------------------
 
     logger.info(f"Reranked {len(candidates)} candidates -> kept top {len(top_documents)}")
-    logger.info(f"Top scores: {[round(float(s), 3) for s, _ in ranked[:TOP_K]]}")
+    logger.info(f"Top scores: {[round(float(s), 3) for s, _ in ranked[:top_k]]}")
     logger.info(f"Context Length : {len(context)} chars")
 
     # ------------------------

@@ -6,7 +6,7 @@ from langchain_core.documents import Document
 
 from tests.conftest import FakeReranker, make_resources
 
-from src.retrieval.config import TOP_K
+from src.retrieval.config import TOP_K, TOP_K_NUMERIC
 from src.workflow.nodes.rerank import rerank_documents
 
 
@@ -114,6 +114,70 @@ def test_reference_section_candidates_are_dropped_before_reranking():
     assert result["documents"] == [body]
     assert reranker.call_count == 1
     assert len(reranker.calls[0]) == 1
+
+
+def test_numeric_question_uses_wider_top_k():
+    # More candidates than either TOP_K, fewer than TOP_K_NUMERIC --
+    # confirms the numeric flag actually changes how many survive.
+    n = TOP_K_NUMERIC - 1
+    candidates = _docs(*[f"chunk {i}" for i in range(n)])
+    scores = list(reversed(range(n)))
+    reranker = FakeReranker(scores)
+    state = {
+        "query": "q",
+        "rewritten_query": "",
+        "documents": candidates,
+        "is_numeric_question": True,
+    }
+
+    result = rerank_documents(state, make_resources(reranker=reranker))
+
+    assert len(result["documents"]) == n  # all of them survive, more than TOP_K
+
+
+def test_numeric_question_still_trims_beyond_top_k_numeric():
+    candidates = _docs(*[f"chunk {i}" for i in range(TOP_K_NUMERIC + 5)])
+    scores = list(reversed(range(len(candidates))))
+    reranker = FakeReranker(scores)
+    state = {
+        "query": "q",
+        "rewritten_query": "",
+        "documents": candidates,
+        "is_numeric_question": True,
+    }
+
+    result = rerank_documents(state, make_resources(reranker=reranker))
+
+    assert len(result["documents"]) == TOP_K_NUMERIC
+
+
+def test_non_numeric_question_keeps_default_top_k():
+    candidates = _docs(*[f"chunk {i}" for i in range(TOP_K_NUMERIC)])
+    scores = list(reversed(range(len(candidates))))
+    reranker = FakeReranker(scores)
+    state = {
+        "query": "q",
+        "rewritten_query": "",
+        "documents": candidates,
+        "is_numeric_question": False,
+    }
+
+    result = rerank_documents(state, make_resources(reranker=reranker))
+
+    assert len(result["documents"]) == TOP_K
+
+
+def test_missing_numeric_flag_defaults_to_default_top_k():
+    # State built before this feature existed (or a node that never set
+    # it) shouldn't accidentally widen -- absence must mean "no".
+    candidates = _docs(*[f"chunk {i}" for i in range(TOP_K_NUMERIC)])
+    scores = list(reversed(range(len(candidates))))
+    reranker = FakeReranker(scores)
+    state = {"query": "q", "rewritten_query": "", "documents": candidates}
+
+    result = rerank_documents(state, make_resources(reranker=reranker))
+
+    assert len(result["documents"]) == TOP_K
 
 
 def test_falls_back_to_reference_candidates_if_nothing_else_available():

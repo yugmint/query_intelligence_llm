@@ -147,35 +147,62 @@ features. All three shipped in the same session as `v0.0.1`.
       reference-section filtering. This fix closes the citation-
       mistaken-for-title failure mode specifically, not identity
       questions in general.
-- [ ] **Generation picks the wrong number when the reranked top-3
-      doesn't contain the cleanest source sentence** — found 2026-07-25
-      testing a fourth real document (Hu et al. 2020, COVID-19 severity
-      study). Asked "what was the sample size?"; the model answered
-      "120" instead of the correct "40". **Corrected diagnosis
+- [x] **Generation picks the wrong number when the reranked top-3
+      doesn't contain the cleanest source sentence — dedicated numeric-
+      question path shipped and validated 2026-07-27.** Found
+      2026-07-25 testing a fourth real document (Hu et al. 2020, COVID-19
+      severity study). Asked "what was the sample size?"; the model
+      answered "120" instead of the correct "40". **Corrected diagnosis
       (2026-07-25, later same day):** originally logged as a generation
-      reading-comprehension gap (both numbers assumed present in
-      context) — that was wrong. Traced the actual context passed to
-      the LLM: the clean, unambiguous sentence (*"Results: A total of
-      40 patients were enrolled in this study, of whom 19 were mild and
-      21 were severe"*) ranks **#8 of 15** after cross-encoder
-      reranking and never makes the `TOP_K=3` cut. The only sample-size
-      information the model actually receives is the ambiguous
-      Limitations-section sentence (*"There were a total of 120
-      COVID-19 patients in Xi'an City, and only 40 of them were treated
-      in our center"*) — so this is a retrieval-ranking problem, not a
-      generation one. **Tried:** a prompt guideline in
-      `src/prompts/generation.py` instructing the model to find the one
-      sentence that most directly answers a numeric question rather
-      than blending figures from different sentences — verified via 3
-      repeated runs that it does **not** fix this specific case (no
-      source text to ground on, so no prompt instruction can help), but
-      kept since it's harmless and may help in cases where the right
-      information *is* present alongside a distractor. Real fix would
-      need retrieval-ranking work (e.g. raising `TOP_K`/
-      `RERANK_CANDIDATES` — real latency cost, see
-      `docs/reports/2026-07-24-reranking-validation.md` §5 — with no
-      guarantee it resolves the ranking itself) or a dedicated numeric
-      question path. Not attempted; deprioritized relative to shipping.
+      reading-comprehension gap — traced the actual context and found
+      the clean sentence (*"Results: A total of 40 patients were
+      enrolled..."*) ranked #8/15 after reranking and never reached
+      `TOP_K=3`; a prompt-only fix couldn't help since the model never
+      saw the source text at all. **Deeper root cause found re-
+      investigating 2026-07-27** (this diagnosis had actually understated
+      it): the correct chunk isn't a near-miss at `RERANK_CANDIDATES=15`
+      — pure FAISS bi-encoder similarity search ranks it **65th of 84**
+      chunks in the document for this query, because the distractor
+      sentence lexically repeats "sample size" three times while the
+      correct sentence never uses that phrase. Even widening to nearly
+      the full document (`k=70-84`) only brings the cross-encoder's rank
+      to **#8** — confirming this needs real retrieval-ranking work, not
+      a bigger `TOP_K`.
+      **Shipped:** a dedicated numeric-question path
+      (`src/processing/numeric_question.py::is_numeric_question` — a
+      fast deterministic pattern match, no extra LLM call) that widens
+      *only* numeric queries' candidate pool
+      (`RERANK_CANDIDATES_NUMERIC=80`) and `TOP_K`
+      (`TOP_K_NUMERIC=8`, see `src/retrieval/config.py`), reusing the
+      same direct-vectorstore path this v0.2.0 metadata-filter feature
+      already added to `nodes/retrieve_context.py`. Non-numeric queries
+      (the large majority) are completely unaffected — same code path,
+      same cost, as before this existed. Also strengthened the existing
+      `src/prompts/generation.py` guideline to explicitly prefer a
+      sentence that breaks its total down into consistent subgroups
+      (a real signal of being the actual sample-size statement) over one
+      naming a broader background population — this mattered because
+      once the correct chunk actually reached context, the model still
+      sometimes quoted the distractor's framing instead.
+      **Validated against real data:** the exact originally-reported
+      question ("what was the sample size in this study?") now answers
+      correctly, verified 3/3 consistent runs. Full 26-question
+      regression suite re-run (Factor Analysis 10 + EfficientNet 10 +
+      this document's 6) in isolated processes per index: zero
+      regressions, one additional real improvement (Factor Analysis'
+      "how many variables" question, previously an honest "I don't
+      know", now correctly answers "6"). **Known limitation, found
+      during this validation:** the fix is phrasing-sensitive, not a
+      full solve — a compound rephrasing of the same question ("what
+      was the sample size *and study design*?") still gets the
+      distractor's answer. Traced: the correct chunk does reach the
+      widened 80-candidate pool (rank 53/84) but the cross-encoder still
+      doesn't rank it in the numeric top-8 for that exact wording, since
+      the distractor sentence also directly speaks to "study design"
+      (a compound question genuinely has two different "most relevant"
+      chunks). Not solvable by widening further without also solving
+      the general reranking-quality problem — left open, documented
+      here rather than silently shipped as if fully solved.
       Full trace: `docs/reports/2026-07-25-airlock-paper-e2e-test.md`.
 - [x] **Query rewriter recency bug — fixed 2026-07-26.** Found via real
       multi-turn use through `../frontend`: the rewrite prompt said

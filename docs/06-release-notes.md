@@ -6,6 +6,37 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.5.1] — 2026-07-27
+
+**Added:**
+- Dedicated numeric-question retrieval path (`src/processing/numeric_question.py`)
+  for the previously-documented "distractor-number ranking gap": a fast,
+  deterministic pattern match (no extra LLM call) widens the candidate
+  pool (`RERANK_CANDIDATES_NUMERIC=80`) and `TOP_K` (`TOP_K_NUMERIC=8`)
+  only for questions asking for a specific number, reusing the same
+  direct-vectorstore path `v0.5.0`'s metadata filtering added. Non-numeric
+  queries are completely unaffected. Strengthened the generation prompt's
+  existing distractor-number guideline to explicitly prefer a total that
+  breaks down into consistent subgroups over one naming a broader
+  background population.
+- 25 new unit tests (detector + both nodes' widening branches).
+
+**Investigated more deeply, found worse than previously documented:**
+re-reproducing the original 2026-07-25 failure fresh showed the correct
+chunk isn't a near-miss at the default candidate pool — pure FAISS
+similarity search ranks it 65th of 84 chunks in the document, and even
+widening to nearly the full document only gets the cross-encoder to
+rank it #8.
+
+**Validated:** the exact originally-reported question now answers
+correctly, 3/3 consistent runs. Full 26-question regression suite
+(Factor Analysis + EfficientNet + the original failing document)
+re-run: zero regressions, one additional real improvement. **Known
+limitation:** a compound rephrasing of the same question ("...and
+study design?") still gets the wrong answer — the fix narrows the
+failure mode, it doesn't eliminate it. Full writeup:
+`docs/05-roadmap.md` v0.2.0.
+
 ## [0.5.0] — 2026-07-27
 
 **Added:**

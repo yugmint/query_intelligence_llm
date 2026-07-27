@@ -25,6 +25,13 @@ class RAGState(TypedDict):
     # (v0.4.0) -- one index can hold multiple unrelated documents, and
     # without this a query has no way to avoid searching all of them.
     metadata_filter: dict[str, Any] | None
+    # Set by nodes/retrieve_context.py via numeric_question.py. Widens
+    # the candidate pool there and TOP_K in nodes/rerank.py -- see
+    # RERANK_CANDIDATES_NUMERIC/TOP_K_NUMERIC in src/retrieval/config.py
+    # for why. Not part of the caller-facing contract (RAGService.ask()
+    # doesn't take this as a param, unlike metadata_filter) -- it's
+    # derived from the query itself, not something a caller decides.
+    is_numeric_question: bool
 
     # -------------------------
     # Guardrails

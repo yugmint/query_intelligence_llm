@@ -28,6 +28,14 @@ Guidelines:
   different things (for example, a study's own sample size vs. a larger
   population figure mentioned only for background, or a specific result
   vs. a comparison number).
+- When asked for a study's sample size specifically, prefer a sentence
+  that states the total enrolled/included in THIS study and breaks it
+  down into consistent subgroups (e.g. "40 patients were enrolled, of
+  whom 19 were mild and 21 were severe" -- the subgroups sum to the
+  total, a strong signal it's the real sample size) over a sentence
+  that mentions a different, broader population used only for
+  background or eligibility context (e.g. how many were available
+  city-wide or screened before narrowing to the study group).
 
 --------------------------
 Conversation History

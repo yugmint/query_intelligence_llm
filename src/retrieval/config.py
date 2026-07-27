@@ -23,4 +23,21 @@ RERANK_CANDIDATES = int(os.getenv("RERANK_CANDIDATES", "15"))
 # package already listed in requirements.txt -- no new dependency.
 RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 
+# Widened retrieval/rerank budget used only for numeric questions (see
+# src/processing/numeric_question.py) -- a real, reproduced failure:
+# for "what was the sample size?" against a real document, the correct
+# chunk ranked ~65th/84 by FAISS's bi-encoder similarity search alone (a
+# nearby distractor sentence lexically repeats "sample size" three times;
+# the correct sentence never uses that phrase) and only #8 among ALL 84
+# chunks after cross-encoder reranking -- nowhere near reachable at the
+# default RERANK_CANDIDATES=15/TOP_K=3. This widened budget is a
+# best-effort mitigation confirmed to fix that specific case, not a
+# guarantee: an even deeper miss on a larger document could still slip
+# past it. Only applied when is_numeric_question() matches, so the
+# latency cost (measured: ~0.7s vs ~0.24s reranking time on an 84-chunk
+# document) is paid only by the narrow class of queries actually at risk,
+# not every query. See docs/05-roadmap.md v0.2.0.
+RERANK_CANDIDATES_NUMERIC = int(os.getenv("RERANK_CANDIDATES_NUMERIC", "80"))
+TOP_K_NUMERIC = int(os.getenv("TOP_K_NUMERIC", "8"))
+
 pdf_path = "data\Grandma's Bag of Stories by Sudha Murthy.pdf"  ## Paste your pdf path here

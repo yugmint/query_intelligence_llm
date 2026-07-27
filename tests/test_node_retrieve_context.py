@@ -6,7 +6,7 @@ from langchain_core.documents import Document
 
 from tests.conftest import FakeRetriever, FakeVectorStore, make_resources
 
-from src.retrieval.config import RERANK_CANDIDATES
+from src.retrieval.config import RERANK_CANDIDATES, RERANK_CANDIDATES_NUMERIC
 from src.workflow.nodes.retrieve_context import retrieve_documents
 
 
@@ -89,3 +89,69 @@ def test_filter_present_uses_vectorstore_similarity_search():
     ]
     assert result["documents"] == docs
     assert result["context"] == "filtered chunk"
+
+
+def test_no_filter_no_numeric_question_flag_is_false():
+    retriever = FakeRetriever([Document(page_content="x")])
+    state = {"query": "What is factor analysis?", "rewritten_query": "", "documents": []}
+
+    result = retrieve_documents(state, make_resources(retriever=retriever))
+
+    assert result["is_numeric_question"] is False
+
+
+def test_numeric_question_widens_candidate_pool_via_vectorstore():
+    """
+    Regression guard for the distractor-number ranking gap (see
+    docs/05-roadmap.md v0.2.0): a numeric question needs a wider
+    candidate pool than the pre-built retriever's fixed k allows, so it
+    must go through the same direct-vectorstore path as a metadata
+    filter, using RERANK_CANDIDATES_NUMERIC instead of RERANK_CANDIDATES.
+    """
+    retriever = FakeRetriever([Document(page_content="should not be used")])
+    docs = [Document(page_content="the correct numeric chunk")]
+    vectorstore = FakeVectorStore(docs)
+    state = {
+        "query": "What was the sample size in this study?",
+        "rewritten_query": "",
+        "metadata_filter": None,
+        "documents": [],
+    }
+
+    result = retrieve_documents(
+        state, make_resources(retriever=retriever, vectorstore=vectorstore)
+    )
+
+    assert retriever.queries == []
+    assert vectorstore.calls == [
+        {
+            "query": "What was the sample size in this study?",
+            "k": RERANK_CANDIDATES_NUMERIC,
+            "filter": None,
+        }
+    ]
+    assert result["documents"] == docs
+    assert result["is_numeric_question"] is True
+
+
+def test_numeric_question_combined_with_metadata_filter():
+    # Both widen the candidate pool AND apply the source filter -- the
+    # two mechanisms aren't mutually exclusive.
+    vectorstore = FakeVectorStore([Document(page_content="x")])
+    metadata_filter = {"source": "airlock.pdf"}
+    state = {
+        "query": "How many patients were enrolled?",
+        "rewritten_query": "",
+        "metadata_filter": metadata_filter,
+        "documents": [],
+    }
+
+    retrieve_documents(state, make_resources(vectorstore=vectorstore))
+
+    assert vectorstore.calls == [
+        {
+            "query": "How many patients were enrolled?",
+            "k": RERANK_CANDIDATES_NUMERIC,
+            "filter": metadata_filter,
+        }
+    ]

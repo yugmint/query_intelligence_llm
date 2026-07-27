@@ -291,7 +291,39 @@ landed in commit `5e12446`.)
       re-run traced to pre-existing LLM sampling variance on a
       *numeric* question -- confirmed unrelated to this change, since
       hybrid search doesn't touch the numeric path at all).
-- [ ] Parent-child retrieval, context compression.
+- [x] **Parent-child retrieval — shipped and validated 2026-07-28.**
+      Not built: a separate parent-document store (e.g. LangChain's
+      `ParentDocumentRetriever`) -- ingestion already tags every PDF
+      chunk with `page_number`/`source`, and the vectorstore already
+      holds every chunk from that page, so "parent" is just "the rest
+      of this page's chunks, looked up in the vectorstore's own
+      docstore." No ingestion-side changes, no new storage.
+      `src/retrieval/parent_context.py::expand_to_parent_context`:
+      after rerank picks the small, precisely-matched chunks,
+      generation's `context` is built from each chunk's full parent
+      page instead of just the matched chunk -- `documents`/citations
+      stay scoped to what actually matched. Wired into
+      `nodes/rerank.py` in place of the raw chunk join.
+      **Real bug found and fixed during validation, not just
+      theorized:** expanding `TOP_K_NUMERIC=8` chunks to full dense
+      pages hit a genuine Groq 413 ("Requested 7735" vs the 6000 TPM
+      hard ceiling) on a real query. Added
+      `PARENT_CONTEXT_MAX_CHARS_PER_PAGE` (1500, `src/retrieval/config.py`):
+      a page over budget falls back to just the matched chunk rather
+      than an arbitrary truncated slice, since the matched chunk could
+      sit anywhere in an oversized page and blind truncation risks
+      cutting out the very thing that was relevant.
+      Context compression (the other half of this roadmap line) not
+      attempted -- parent expansion is the opposite direction (more
+      context, not less); no evidence yet that context length itself
+      (as opposed to per-request size, which the cap above already
+      addresses) is a real problem worth solving.
+      10 new unit tests. **Validated against real data:** confirmed
+      expansion is genuinely active (1,495 → 7,203 chars on a real
+      query); full 26-question regression suite re-run end-to-end
+      after the fix -- zero regressions, the previously-hedging
+      "how many variables" answer is now clean, no more 413s anywhere
+      including the numeric-widened path that originally triggered one.
 
 ## v0.4.0 — Multi-user & production hardening
 

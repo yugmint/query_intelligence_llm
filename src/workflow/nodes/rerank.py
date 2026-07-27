@@ -1,6 +1,7 @@
 from difflib import SequenceMatcher
 
 from src.retrieval.config import CHUNK_DEDUP_SIMILARITY_THRESHOLD, TOP_K, TOP_K_NUMERIC
+from src.retrieval.parent_context import expand_to_parent_context
 from src.workflow.resources import RAGResources
 from src.workflow.state import RAGState
 
@@ -122,10 +123,11 @@ def rerank_documents(
     selected = _select_diverse_top_k(ranked, top_k)
     top_documents = [document for _score, document in selected]
 
-    context = "\n\n".join(
-        document.page_content
-        for document in top_documents
-    )
+    # Parent-child retrieval: generation reads each chunk's full parent
+    # page instead of just the matched chunk -- see
+    # src/retrieval/parent_context.py. documents/citations below still
+    # reflect the actual matched (small) chunks, unchanged.
+    context = expand_to_parent_context(top_documents, resources.vectorstore)
 
     # ------------------------
     # Business Metrics

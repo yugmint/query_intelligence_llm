@@ -6,6 +6,27 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.5.8] — 2026-07-28
+
+**Added:**
+- Parent-child retrieval. `expand_to_parent_context` builds generation
+  context from each matched chunk's full parent page (looked up in the
+  vectorstore's own docstore by source+page_number -- no separate
+  parent store, no ingestion-side changes) instead of just the small
+  matched chunk. `documents`/citations stay scoped to what actually
+  matched. 10 new tests.
+
+**Fixed:**
+- A real Groq 413 found during validation: `TOP_K_NUMERIC=8` chunks
+  each expanding to a full dense page exceeded the 6000 TPM hard
+  ceiling on one real query. New `PARENT_CONTEXT_MAX_CHARS_PER_PAGE`
+  cap -- a page over budget falls back to the matched chunk alone
+  rather than a truncated slice that could cut out the relevant part.
+
+**Validated:** confirmed expansion is genuinely active on real data
+(1,495 → 7,203 chars); full 26-question regression suite re-run after
+the size-cap fix -- zero regressions, no more 413s.
+
 ## [0.5.7] — 2026-07-27
 
 **Added:**

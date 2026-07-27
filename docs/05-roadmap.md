@@ -529,9 +529,22 @@ Intelligence" as customer-facing phases, but are real, shipped work.
       server and confirmed every card/table value matched the raw
       `/metrics` output exactly; screenshots confirm correct rendering
       in both dark and light theme.
-- [ ] Expanded guardrails: PII detection, toxicity detection, language
-      detection, sensitive-info detection, role validation (current chain
-      is empty/length/character/prompt-injection/normalization only).
+- [x] **Expanded guardrails — shipped 2026-07-27.** Added
+      `SensitiveInfoValidator` (email/SSN/phone/API-key regex + a Luhn
+      check for card numbers, to avoid false-positiving on any 13-16
+      digit string) and `ToxicityValidator` (blocked-word list), same
+      chain-of-responsibility shape as the existing 5 validators. 12
+      new tests.
+      Scoped down, not built as listed: **language detection and role
+      validation skipped** -- no stated need to restrict languages, and
+      there's no role/RBAC model anywhere in this codebase for "role
+      validation" to validate against (API-key auth is binary
+      allow/deny). Speculative infra for a system that doesn't have it;
+      add if a real multi-role auth model ever lands.
+      Toxicity detection is a wordlist, not a real classifier --
+      misses coded/implicit toxicity, marked with a `ponytail:` comment
+      naming the ceiling (upgrade: Perspective API / a small local
+      model) rather than pulling in a new ML dependency for it.
 
 ## Unscheduled
 

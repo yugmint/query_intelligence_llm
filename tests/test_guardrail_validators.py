@@ -12,6 +12,8 @@ from src.guardrails.validators.empty_query import EmptyQueryValidator
 from src.guardrails.validators.length import MAX_QUERY_LENGTH, LengthValidator
 from src.guardrails.validators.normalizer import QueryNormalizer
 from src.guardrails.validators.prompt_injection import PromptInjectionValidator
+from src.guardrails.validators.sensitive_info import SensitiveInfoValidator
+from src.guardrails.validators.toxicity import ToxicityValidator
 
 
 def _state(query: str, **overrides) -> dict:
@@ -182,6 +184,71 @@ def test_extra_whitespace_no_longer_bypasses_injection_detection():
     result = PromptInjectionValidator().validate(_state(query))
 
     assert result["is_valid"] is False
+
+
+# ---------------------------------------------------------------------------
+# SensitiveInfoValidator
+# ---------------------------------------------------------------------------
+
+def test_email_is_rejected():
+    result = SensitiveInfoValidator().validate(_state("contact me at foo@bar.com"))
+
+    assert result["is_valid"] is False
+
+
+def test_ssn_is_rejected():
+    result = SensitiveInfoValidator().validate(_state("my ssn is 123-45-6789"))
+
+    assert result["is_valid"] is False
+
+
+def test_valid_card_number_is_rejected():
+    # 4111111111111111 is the standard Luhn-valid Visa test number.
+    result = SensitiveInfoValidator().validate(_state("card: 4111111111111111"))
+
+    assert result["is_valid"] is False
+
+
+def test_luhn_invalid_long_number_passes():
+    # A 16-digit number that fails Luhn (e.g. an ISBN/order number)
+    # shouldn't be blocked as a card number.
+    result = SensitiveInfoValidator().validate(_state("order number 1234567890123456"))
+
+    assert result["is_valid"] is True
+
+
+def test_api_key_is_rejected():
+    result = SensitiveInfoValidator().validate(_state("key is sk-abcdefghijklmnopqrstuvwx"))
+
+    assert result["is_valid"] is False
+
+
+def test_ordinary_query_passes_sensitive_info_check():
+    result = SensitiveInfoValidator().validate(_state("What does chapter 3 say?"))
+
+    assert result["is_valid"] is True
+
+
+# ---------------------------------------------------------------------------
+# ToxicityValidator
+# ---------------------------------------------------------------------------
+
+def test_offensive_word_is_rejected():
+    result = ToxicityValidator().validate(_state("this is fucking annoying"))
+
+    assert result["is_valid"] is False
+
+
+def test_matching_is_case_insensitive_for_toxicity():
+    result = ToxicityValidator().validate(_state("you BITCH"))
+
+    assert result["is_valid"] is False
+
+
+def test_ordinary_query_passes_toxicity_check():
+    result = ToxicityValidator().validate(_state("What does chapter 3 say?"))
+
+    assert result["is_valid"] is True
 
 
 # ---------------------------------------------------------------------------

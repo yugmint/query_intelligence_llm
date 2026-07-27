@@ -6,6 +6,17 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.5.7] — 2026-07-27
+
+**Added:**
+- `SensitiveInfoValidator` (email/SSN/phone/API-key regex + Luhn-checked
+  card numbers) and `ToxicityValidator` (wordlist) added to the input
+  guardrail chain. 12 new tests.
+
+**Not built:** language detection and role validation, from the same
+roadmap line -- no role/RBAC model exists in this codebase, and no
+stated need to restrict languages. See `docs/05-roadmap.md` v0.5.0.
+
 ## [0.5.6] — 2026-07-27
 
 **Added:**

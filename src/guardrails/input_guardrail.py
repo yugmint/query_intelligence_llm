@@ -6,6 +6,12 @@ from src.guardrails.validators.prompt_injection import (
 from src.guardrails.validators.character import (
     CharacterValidator,
 )
+from src.guardrails.validators.sensitive_info import (
+    SensitiveInfoValidator,
+)
+from src.guardrails.validators.toxicity import (
+    ToxicityValidator,
+)
 from src.guardrails.validators.normalizer import (
     QueryNormalizer,
 )
@@ -27,6 +33,10 @@ class InputGuardrail:
             CharacterValidator(),
 
             PromptInjectionValidator(),
+
+            SensitiveInfoValidator(),
+
+            ToxicityValidator(),
 
             QueryNormalizer(),
 

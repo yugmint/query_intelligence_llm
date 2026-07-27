@@ -66,6 +66,7 @@ langchain-groq==0.3.6  # Cerebras and Gemini were both evaluated as of 2026-07-2
 fastapi==0.139.2
 uvicorn==0.51.0
 slowapi==0.1.10  # per-client (IP) rate limiting on /query -- in-memory backend, no Redis needed at current scale
+prometheus_client==0.25.0  # GET /metrics -- was already an implicit transitive dependency; pinned explicitly now that src/utils/metrics.py depends on it directly
 
 # ==========================
 # Development

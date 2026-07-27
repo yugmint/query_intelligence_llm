@@ -490,8 +490,45 @@ Intelligence" as customer-facing phases, but are real, shipped work.
       request and confirmed genuine incremental growth (0 → 78 → 466
       chars), not a single final paint; screenshot confirms correct
       final rendering with citations/intent intact.
-- [ ] Observability / metrics dashboard beyond structured logs and
-      evaluation CSVs.
+- [x] **Observability / metrics dashboard — shipped and validated
+      2026-07-27.** New `GET /metrics` (Prometheus text-exposition
+      format), auth-protected like every other non-`/health` endpoint
+      -- these numbers reveal real traffic patterns, not something to
+      expose unauthenticated on a public deployment.
+      Scope, chosen with the user upfront rather than assumed: real
+      Prometheus/Grafana support *plus* a built-in dashboard page, so
+      this is useful with zero extra infrastructure and still plugs
+      into real monitoring tooling if you have it.
+      `src/utils/metrics.py` defines a small, fixed metric set rather
+      than instrumenting everything: `rag_node_duration_seconds`
+      (Histogram, per-node latency) and `rag_node_failures_total`
+      (Counter) hook into `src/utils/decorators.py::log_node` -- the
+      single decorator every one of the 8 LangGraph nodes already goes
+      through, so this instruments all of them without touching each
+      node file individually. `rag_requests_total` (Counter, by
+      endpoint + outcome) covers `/query` and `/query/stream`.
+      `rag_active_sessions` (Gauge) is set at scrape time from the new
+      `RAGService.active_session_count()`.
+      `../frontend/dashboard.html` — a second buildless static page
+      (same visual system as `index.html`, own settings drawer/API key,
+      own localStorage key) that polls `/metrics`, parses the
+      Prometheus text format client-side (a ~20-line parser, not a
+      dependency), and renders stat cards + a per-node latency table +
+      a requests-by-outcome table, auto-refreshing on a configurable
+      interval.
+      18 new unit tests (metrics recording via the decorator hook,
+      `active_session_count()`).
+      **Validated against real data:** started a live server, sent real
+      traffic (`/query`, `/query/stream`, including a session with no
+      real answer), and confirmed `GET /metrics`'s raw output correctly
+      reflected it -- exact request/session counts, real per-node
+      latency numbers matching this session's own previously-observed
+      Groq latency patterns (Intent ~9.7s avg, Generate_Knowledge
+      ~10.8s avg), zero node failures recorded on a clean run.
+      Playwright: loaded `dashboard.html` against that same live
+      server and confirmed every card/table value matched the raw
+      `/metrics` output exactly; screenshots confirm correct rendering
+      in both dark and light theme.
 - [ ] Expanded guardrails: PII detection, toxicity detection, language
       detection, sensitive-info detection, role validation (current chain
       is empty/length/character/prompt-injection/normalization only).

@@ -6,6 +6,28 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.5.6] — 2026-07-27
+
+**Added:**
+- Observability. New `GET /metrics` (Prometheus text format,
+  auth-protected): `rag_node_duration_seconds`/`rag_node_failures_total`
+  per LangGraph node (hooked into the existing `log_node` decorator --
+  no per-node instrumentation needed), `rag_requests_total` by endpoint
+  + outcome, `rag_active_sessions`. New
+  `RAGService.active_session_count()`.
+  `../frontend/dashboard.html` -- a second buildless static page
+  (same visual system as `index.html`) that polls `/metrics` and
+  renders stat cards + per-node latency + request-outcome tables, with
+  its own settings drawer and auto-refresh.
+  18 new unit tests. New explicit dependency: `prometheus_client`
+  (was already transitive, now pinned directly).
+
+**Validated:** sent real traffic to a live server and confirmed
+`/metrics`'s raw output correctly reflected exact request/session
+counts and real per-node latency; Playwright confirmed
+`dashboard.html`'s rendered values match the raw metrics output
+exactly, in both themes.
+
 ## [0.5.5] — 2026-07-27
 
 **Added:**

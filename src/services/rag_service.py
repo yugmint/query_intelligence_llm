@@ -314,6 +314,15 @@ class RAGService:
             "citations": citations,
         }
 
+    def active_session_count(self) -> int:
+        """
+        Current size of the bounded session store -- see MAX_SESSIONS.
+        Exists so callers (GET /metrics) don't need to reach into the
+        private `_sessions` dict directly.
+        """
+
+        return len(self._sessions)
+
     def reset_memory(self, session_id: str = DEFAULT_SESSION_ID):
         """
         Clears conversation history for one session (default: the

@@ -24,8 +24,9 @@ import os
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -33,6 +34,7 @@ from slowapi.util import get_remote_address
 from src.services.rag_service import DEFAULT_SESSION_ID, RAGService
 from src.utils.auth import require_api_key
 from src.utils.logger import logger
+from src.utils.metrics import ACTIVE_SESSIONS, REQUESTS_TOTAL, outcome_for_state
 
 app = FastAPI(title="RAG Query API", version="0.1.0")
 
@@ -132,10 +134,13 @@ def query(request: Request, body: QueryRequest):
         # under concurrent load -- see
         # docs/reports/2026-07-26-performance-and-deployment-readiness.md.
         logger.error(f"Query failed for session '{body.session_id}': {exc}")
+        REQUESTS_TOTAL.labels(endpoint="query", outcome="error").inc()
         raise HTTPException(
             status_code=503,
             detail="The assistant is temporarily unavailable. Please try again shortly.",
         ) from exc
+
+    REQUESTS_TOTAL.labels(endpoint="query", outcome=outcome_for_state(state)).inc()
 
     return QueryResponse(
         answer=state.get("answer", ""),
@@ -179,6 +184,10 @@ def query_stream(request: Request, body: QueryRequest):
                 session_id=body.session_id,
                 metadata_filter=metadata_filter,
             ):
+                if event.get("type") == "done":
+                    REQUESTS_TOTAL.labels(
+                        endpoint="query_stream", outcome=outcome_for_state(event)
+                    ).inc()
                 yield _sse_event(event)
         except Exception as exc:
             # Once streaming has started, the response's 200 status is
@@ -190,6 +199,7 @@ def query_stream(request: Request, body: QueryRequest):
             # comment for why this can still happen despite the LLM
             # client's own retries.
             logger.error(f"Streaming query failed for session '{body.session_id}': {exc}")
+            REQUESTS_TOTAL.labels(endpoint="query_stream", outcome="error").inc()
             yield _sse_event(
                 {
                     "type": "error",
@@ -202,6 +212,24 @@ def query_stream(request: Request, body: QueryRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
+
+
+@app.get("/metrics", dependencies=[Depends(require_api_key)])
+def metrics():
+    """
+    Prometheus text-exposition format: per-node latency/failure counts
+    (src/utils/decorators.py::log_node), request outcomes by endpoint,
+    and the current active-session count. Point this at Prometheus/
+    Grafana, or use ../frontend/dashboard.html for a built-in view that
+    needs no extra infrastructure. Auth-protected like every other
+    non-/health endpoint here -- these numbers reveal real traffic
+    patterns, not something to expose to the public internet
+    unauthenticated.
+    """
+
+    ACTIVE_SESSIONS.set(rag.active_session_count())
+
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/sources", dependencies=[Depends(require_api_key)])

@@ -77,3 +77,12 @@ def test_reset_memory_on_existing_session_replaces_without_growing_store(rag_ser
 
     assert len(rag_service._sessions) == 1
     assert first is not second  # actually reset, not the same object
+
+
+def test_active_session_count_matches_store_size(rag_service):
+    assert rag_service.active_session_count() == 0
+
+    rag_service._get_session_memory("a")
+    rag_service._get_session_memory("b")
+
+    assert rag_service.active_session_count() == 2

@@ -6,6 +6,31 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.5.5] — 2026-07-27
+
+**Added:**
+- Streaming responses. New `POST /query/stream` (Server-Sent Events)
+  alongside the unchanged `/query`. `RAGService.ask_stream()` streams
+  via LangGraph's `stream_mode=["messages", "values"]` over the same
+  compiled graph `ask()` uses, filtered to only forward
+  `generate`/`conversation` node tokens. Mid-stream failures are
+  signaled as an in-band `{"type": "error"}` event (can't fall back to
+  a 503 once the stream has started). `../frontend/index.html` now
+  renders the assistant's reply incrementally as tokens arrive.
+  13 new/rewritten unit tests.
+
+**Fixed:**
+- `nodes/generate_conversation.py` asked the model to wrap replies in
+  `{"response": "..."}` JSON, which would leak raw JSON syntax into a
+  streamed response. Rewritten to ask for plain text, matching
+  `generate_knowledge.py`'s prompt (which already showed the JSON-
+  wrapper instruction wasn't reliably honored in the first place).
+
+**Validated:** real token-by-token SSE delivery confirmed via a
+timestamped client against a live server; Playwright confirmed the
+frontend renders incrementally (sampled message length every 150ms
+during a real request: 0 → 78 → 466 chars), not a single final paint.
+
 ## [0.5.4] — 2026-07-27
 
 **Added:**

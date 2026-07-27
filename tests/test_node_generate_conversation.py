@@ -13,8 +13,11 @@ def _state(**overrides):
     return state
 
 
-def test_valid_json_response_extracts_answer():
-    llm = FakeLLM('{"response": "Hello! How can I help?"}')
+def test_returns_llm_content_directly():
+    # Plain text, not JSON-wrapped -- see the node's docstring for why
+    # (streaming compatibility; the JSON-wrapper instruction was never
+    # reliably honored anyway).
+    llm = FakeLLM("Hello! How can I help?")
 
     result = generate_conversation(_state(), make_resources(llm=llm))
 
@@ -22,32 +25,16 @@ def test_valid_json_response_extracts_answer():
     assert result["metadata"]["intent"] == "greeting"
 
 
-def test_non_json_response_falls_back_to_raw_content():
-    llm = FakeLLM("Hey! Just chatting.")
+def test_strips_surrounding_whitespace():
+    llm = FakeLLM("  Hey! Just chatting.  \n")
 
     result = generate_conversation(_state(), make_resources(llm=llm))
 
     assert result["answer"] == "Hey! Just chatting."
 
 
-def test_fallback_on_parse_failure_uses_uncleaned_raw_content():
-    """
-    Documents a real asymmetry in the node: on the happy path it parses
-    `content` (fences stripped), but the except branch falls back to
-    `response.content` (the ORIGINAL, un-stripped value) rather than the
-    cleaned `content` variable. If the raw response has markdown fences
-    around invalid JSON, the fences survive into the answer.
-    """
-    raw = "```json\nnot actually valid json\n```"
-    llm = FakeLLM(raw)
-
-    result = generate_conversation(_state(), make_resources(llm=llm))
-
-    assert result["answer"] == raw
-
-
 def test_prompt_includes_intent_history_and_query():
-    llm = FakeLLM('{"response": "ok"}')
+    llm = FakeLLM("ok")
     state = _state(intent="chit_chat", chat_history="user: hi\nassistant: hey", query="what's up")
 
     generate_conversation(state, make_resources(llm=llm))
@@ -56,3 +43,15 @@ def test_prompt_includes_intent_history_and_query():
     assert "chit_chat" in prompt
     assert "user: hi" in prompt
     assert "what's up" in prompt
+
+
+def test_prompt_instructs_against_json_and_fences():
+    # The whole point of this node's rewrite -- make sure the
+    # instruction that made streaming safe doesn't silently disappear.
+    llm = FakeLLM("ok")
+
+    generate_conversation(_state(), make_resources(llm=llm))
+
+    prompt = llm.prompts[0].lower()
+    assert "json" in prompt
+    assert "fence" in prompt

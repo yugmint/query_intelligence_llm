@@ -19,10 +19,12 @@ dev/demo/moderate traffic, not yet for long-running high-volume
 multi-user production use.
 """
 
+import json
 import os
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -141,6 +143,64 @@ def query(request: Request, body: QueryRequest):
         status=state.get("status", ""),
         session_id=body.session_id,
         citations=state.get("citations", []),
+    )
+
+
+def _sse_event(payload: dict) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+@app.post("/query/stream", dependencies=[Depends(require_api_key)])
+@limiter.limit("10/minute")
+def query_stream(request: Request, body: QueryRequest):
+    """
+    Same as /query, but streams the answer incrementally as
+    Server-Sent Events instead of waiting for the full answer before
+    responding. Each event is `data: <json>\\n\\n`; the `type` field is
+    either "token" ({"type": "token", "content": str}, one per piece of
+    the answer as it's generated) or "done" (the same shape /query
+    returns -- answer, intent, status, session_id, citations -- sent
+    exactly once at the end) or "error" (see below).
+
+    POST rather than GET/EventSource: the browser's native EventSource
+    API is GET-only and can't carry a JSON body (query, session_id,
+    source), so the frontend reads this via fetch() + a manual
+    ReadableStream reader instead. See ../frontend/index.html.
+    """
+    if not body.query or not body.query.strip():
+        raise HTTPException(status_code=400, detail="query must not be empty")
+
+    metadata_filter = {"source": body.source} if body.source else None
+
+    def event_stream():
+        try:
+            for event in rag.ask_stream(
+                body.query,
+                session_id=body.session_id,
+                metadata_filter=metadata_filter,
+            ):
+                yield _sse_event(event)
+        except Exception as exc:
+            # Once streaming has started, the response's 200 status is
+            # already committed -- unlike /query, there's no way to
+            # switch to a 503 at this point. Signal failure in-band
+            # instead so the client sees a clean error event rather than
+            # a silently truncated stream or a raw traceback. Same
+            # underlying failure class /query's 503 handles -- see its
+            # comment for why this can still happen despite the LLM
+            # client's own retries.
+            logger.error(f"Streaming query failed for session '{body.session_id}': {exc}")
+            yield _sse_event(
+                {
+                    "type": "error",
+                    "detail": "The assistant is temporarily unavailable. Please try again shortly.",
+                }
+            )
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
 
 

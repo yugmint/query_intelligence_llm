@@ -29,6 +29,13 @@ DEFAULT_SESSION_ID = "default"
 # docs/reports/2026-07-26-performance-and-deployment-readiness.md.
 MAX_SESSIONS = int(os.getenv("RAG_MAX_SESSIONS", "1000"))
 
+# Graph node names whose LLM output is meant to reach the user -- see
+# ask_stream(). LangGraph's stream_mode="messages" emits token chunks
+# for EVERY LLM call in the graph, including detect_intent's raw
+# classification JSON; forwarding those to a client would leak internal
+# plumbing into the middle of what looks like the answer.
+_STREAMED_NODES = {"generate", "conversation"}
+
 
 class RAGService:
     """
@@ -207,6 +214,105 @@ class RAGService:
             return result
 
         return result["answer"]
+
+    def ask_stream(
+        self,
+        query: str,
+        session_id: str = DEFAULT_SESSION_ID,
+        metadata_filter: dict | None = None,
+    ):
+        """
+        Same as ask(), but yields the answer incrementally via
+        LangGraph's own token-level streaming (stream_mode="messages")
+        instead of returning it all at once -- see docs/05-roadmap.md
+        v0.5.0 "Streaming responses". Reuses the exact same compiled
+        graph as ask(); the two are just different ways of consuming it
+        (.invoke() vs .stream()), not two different execution paths.
+
+        Combines stream_mode=["messages", "values"] in one pass: the
+        "messages" stream yields token-by-token, and the last "values"
+        payload is the complete final state (same shape ask() gets from
+        .invoke()) -- needed for citations/intent/status, which aren't
+        knowable until the whole graph (including the memory node) has
+        run.
+
+        Yields
+        ------
+        dict
+            {"type": "token", "content": str} for each piece of the
+            answer as it's generated, followed by exactly one
+            {"type": "done", "answer": str, "intent": str, "status": str,
+             "session_id": str, "citations": list[dict]} once the full
+            workflow has completed. A request that never reaches an LLM
+            call at all (guardrail-rejected, or no index loaded) yields
+            zero token events and goes straight to "done" -- there's
+            nothing to stream in those cases.
+        """
+
+        logger.info("")
+        logger.info("=" * 100)
+        logger.info(f"New Streaming Query [session={session_id}] : {query}")
+
+        if self.resources.retriever is None:
+            logger.warning("No FAISS index loaded -- refusing to answer.")
+            answer = (
+                "I don't have any documents loaded yet, so I can't answer "
+                "questions right now. Please try again shortly."
+            )
+            yield {
+                "type": "done",
+                "answer": answer,
+                "intent": "",
+                "status": "no_index",
+                "session_id": session_id,
+                "citations": [],
+            }
+            return
+
+        memory = self._get_session_memory(session_id)
+        chat_history = format_chat_history(memory.messages)
+
+        initial_state = {
+            "query": query,
+            "intent": "",
+            "rewritten_query": "",
+            "metadata_filter": metadata_filter,
+            "documents": [],
+            "context": "",
+            "chat_history": chat_history,
+            "session_id": session_id,
+            "session_memory": memory,
+            "answer": "",
+            "retry_count": 0,
+            "metadata": {},
+        }
+
+        final_values: dict = {}
+
+        for stream_type, payload in self.workflow.stream(
+            initial_state, stream_mode=["messages", "values"]
+        ):
+            if stream_type == "messages":
+                message_chunk, chunk_metadata = payload
+                node = chunk_metadata.get("langgraph_node")
+                content = getattr(message_chunk, "content", "")
+                if node in _STREAMED_NODES and content:
+                    yield {"type": "token", "content": content}
+            elif stream_type == "values":
+                final_values = payload
+
+        logger.info("Streaming workflow execution completed.")
+
+        citations = build_citations(final_values.get("documents", []))
+
+        yield {
+            "type": "done",
+            "answer": final_values.get("answer", ""),
+            "intent": final_values.get("intent", ""),
+            "status": final_values.get("status", ""),
+            "session_id": session_id,
+            "citations": citations,
+        }
 
     def reset_memory(self, session_id: str = DEFAULT_SESSION_ID):
         """

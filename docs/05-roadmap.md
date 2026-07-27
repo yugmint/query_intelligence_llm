@@ -442,7 +442,54 @@ Intelligence" as customer-facing phases, but are real, shipped work.
       query against the shared 2-document index correctly cited only
       the filtered document). Playwright screenshot confirms the
       frontend renders it correctly end-to-end.
-- [ ] Streaming responses.
+- [x] **Streaming responses — shipped and validated 2026-07-27.** New
+      `POST /query/stream` (Server-Sent Events, `data: <json>\n\n`
+      frames) alongside the existing `/query`, which is untouched.
+      `RAGService.ask_stream()` reuses the exact same compiled graph as
+      `ask()` -- just consumed via LangGraph's own
+      `stream_mode=["messages", "values"]` instead of `.invoke()`,
+      confirmed empirically to work with this project's pinned
+      `langgraph==0.2.76` + `ChatGroq` before committing to the design.
+      `"messages"` streams token-by-token from *every* LLM call in the
+      graph, not just the final answer -- filtered to only forward
+      `generate`/`conversation` node output (`_STREAMED_NODES`), so
+      `detect_intent`'s raw classification JSON never leaks to the
+      client. The final `"values"` payload (LangGraph's complete final
+      state, after the `memory` node has run) is used to build the same
+      `citations`/`intent`/`status` `/query` already returns, sent once
+      as a closing `{"type": "done", ...}` event.
+      **Real, necessary fix found along the way:**
+      `nodes/generate_conversation.py` asked the model to wrap its
+      reply in `{"response": "..."}` JSON -- streaming that raw would
+      show the user a literal `{`, `"response": "`, etc. typing itself
+      out instead of clean text. Rewrote it to ask for plain text
+      instead, matching `generate_knowledge.py`'s prompt (which already
+      demonstrated the JSON-wrapper instruction wasn't reliably honored
+      anyway -- it logs "Structured JSON response not received" on
+      nearly every real call). Mid-stream failures (LLM error after
+      retries exhausted) can't use `/query`'s clean-503 pattern -- the
+      response's 200 status is already committed once streaming starts
+      -- so they're signaled in-band as a `{"type": "error", ...}`
+      event instead.
+      `../frontend/index.html` rewritten to consume the stream via
+      `fetch()` + a manual `ReadableStream` reader (native `EventSource`
+      is GET-only and can't carry the JSON body `/query/stream` needs) --
+      the assistant's message now grows incrementally in the UI rather
+      than appearing all at once.
+      13 new/rewritten unit tests (`ask_stream()`'s node-filtering and
+      final-event assembly; `generate_conversation`'s plain-text
+      behavior).
+      **Validated against real data:** confirmed real token-by-token
+      SSE delivery via a timestamped `requests` client against a live
+      server (not just checking the response shape). Groq's inference
+      is fast enough that a full ~80-token answer streamed in ~1
+      second end-to-end -- streaming's main real benefit here is a
+      faster perceived response and not blocking on the whole answer,
+      more than a dramatic visible typing effect. Playwright: sampled
+      the assistant message's rendered length every 150ms during a real
+      request and confirmed genuine incremental growth (0 → 78 → 466
+      chars), not a single final paint; screenshot confirms correct
+      final rendering with citations/intent intact.
 - [ ] Observability / metrics dashboard beyond structured logs and
       evaluation CSVs.
 - [ ] Expanded guardrails: PII detection, toxicity detection, language

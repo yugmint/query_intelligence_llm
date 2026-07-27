@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any
 
+from src.retrieval.bm25 import BM25Factory
 from src.retrieval.embeddings import EmbeddingFactory
 from src.retrieval.llm import LLMFactory
 from src.retrieval.reranker import RerankerFactory
@@ -27,6 +28,11 @@ class RAGResources:
     vectorstore: Any
     retriever: Any
     reranker: Any
+    # Sparse (BM25) half of hybrid search -- see src/retrieval/hybrid.py.
+    # None whenever vectorstore/retriever are (no index yet), same
+    # convention as them; defaults to None so existing call sites that
+    # don't pass it (tests, mainly) don't have to change.
+    bm25_retriever: Any = None
 
 
 def build_resources() -> RAGResources:
@@ -48,6 +54,8 @@ def build_resources() -> RAGResources:
 
     retriever = RetrieverFactory.build(vectorstore) if vectorstore is not None else None
 
+    bm25_retriever = BM25Factory.build(vectorstore) if vectorstore is not None else None
+
     reranker = RerankerFactory.get()
 
     llm = LLMFactory.get()
@@ -58,4 +66,5 @@ def build_resources() -> RAGResources:
         vectorstore=vectorstore,
         retriever=retriever,
         reranker=reranker,
+        bm25_retriever=bm25_retriever,
     )

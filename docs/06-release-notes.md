@@ -6,6 +6,27 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.5.4] — 2026-07-27
+
+**Added:**
+- Hybrid search (BM25 + dense). New `src/retrieval/bm25.py::BM25Factory`
+  (`langchain_community.retrievers.BM25Retriever`, new `rank_bm25`
+  dependency) built from the vectorstore corpus, fused with the
+  existing dense retriever via Reciprocal Rank Fusion
+  (`src/retrieval/hybrid.py`, `k=60`) before reranking. `RAGResources`
+  gained `bm25_retriever`, rebuilt alongside the vectorstore on every
+  `reload_index()`. Deliberately scoped to the plain retrieval path
+  only -- metadata-filtered and numeric-question queries are
+  unaffected, see `docs/05-roadmap.md` v0.3.0 for why. 15 new unit
+  tests.
+
+**Validated:** confirmed fusion is genuinely active on real data (not
+a no-op) -- changed the top-3 candidate ranking for 3/3 plain
+questions tested on the Factor Analysis index, correctly promoting a
+definitional chunk dense-only search had buried under a boilerplate
+header chunk. Full 26-question regression suite re-run through
+`RAGService.ask()` end-to-end: zero regressions.
+
 ## [0.5.3] — 2026-07-27
 
 **Added:**

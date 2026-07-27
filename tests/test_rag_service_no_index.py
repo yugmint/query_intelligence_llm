@@ -52,10 +52,15 @@ def test_reload_index_recovers_once_an_index_exists(rag_service_no_index, monkey
         "src.services.rag_service.RetrieverFactory.build",
         lambda vectorstore: FakeRetriever([Document(page_content="x")]),
     )
+    monkeypatch.setattr(
+        "src.services.rag_service.BM25Factory.build",
+        lambda vectorstore: FakeRetriever([Document(page_content="x")]),
+    )
 
     assert rag_service_no_index.resources.retriever is None
     rag_service_no_index.reload_index()
     assert rag_service_no_index.resources.retriever is not None
+    assert rag_service_no_index.resources.bm25_retriever is not None
 
 
 def test_reload_index_stays_in_no_index_mode_if_still_missing(rag_service_no_index, monkeypatch):

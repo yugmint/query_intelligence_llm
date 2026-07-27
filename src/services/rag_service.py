@@ -3,6 +3,7 @@ from collections import OrderedDict
 
 from langchain_core.chat_history import InMemoryChatMessageHistory
 
+from src.retrieval.bm25 import BM25Factory
 from src.retrieval.memory import get_memory
 from src.retrieval.retriever import RetrieverFactory
 from src.retrieval.vectorstore import VectorStoreFactory
@@ -237,6 +238,11 @@ class RAGService:
         self.resources.vectorstore = vectorstore
         self.resources.retriever = (
             RetrieverFactory.build(vectorstore) if vectorstore is not None else None
+        )
+        # BM25Retriever has no add-in-place API -- rebuilt from scratch
+        # in lockstep with the vectorstore, same as retriever above.
+        self.resources.bm25_retriever = (
+            BM25Factory.build(vectorstore) if vectorstore is not None else None
         )
 
         if vectorstore is None:

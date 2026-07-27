@@ -92,7 +92,9 @@ class FakeVectorStore:
         return self._documents
 
 
-def make_resources(llm=None, retriever=None, reranker=None, vectorstore=None) -> RAGResources:
+def make_resources(
+    llm=None, retriever=None, reranker=None, vectorstore=None, bm25_retriever=None
+) -> RAGResources:
     """
     Build a RAGResources with only the fields a given node actually uses
     populated -- the rest are None, which is fine since nothing in these
@@ -104,6 +106,7 @@ def make_resources(llm=None, retriever=None, reranker=None, vectorstore=None) ->
         vectorstore=vectorstore,
         retriever=retriever,
         reranker=reranker,
+        bm25_retriever=bm25_retriever,
     )
 
 

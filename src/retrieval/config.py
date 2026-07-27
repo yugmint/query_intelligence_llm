@@ -52,4 +52,10 @@ TOP_K_NUMERIC = int(os.getenv("TOP_K_NUMERIC", "8"))
 # (e.g. genuinely redundant content, or the same passage re-embedded).
 CHUNK_DEDUP_SIMILARITY_THRESHOLD = float(os.getenv("CHUNK_DEDUP_SIMILARITY_THRESHOLD", "0.8"))
 
+# Reciprocal Rank Fusion constant for hybrid search (BM25 + dense) --
+# see src/retrieval/hybrid.py. Dampens the influence of exact rank
+# position; 60 is the standard default from the original RRF paper, not
+# tuned specifically for this project.
+RRF_K = int(os.getenv("RRF_K", "60"))
+
 pdf_path = "data\Grandma's Bag of Stories by Sudha Murthy.pdf"  ## Paste your pdf path here

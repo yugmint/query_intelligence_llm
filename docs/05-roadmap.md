@@ -251,7 +251,46 @@ landed in commit `5e12446`.)
 
 ## v0.3.0 — Advanced retrieval (README Phase 3)
 
-- [ ] Hybrid search (BM25 + dense).
+- [x] **Hybrid search (BM25 + dense) — shipped and validated 2026-07-27.**
+      FAISS's bi-encoder similarity search is a purely semantic match --
+      it can under-rank a chunk containing an exact keyword/identifier
+      (a model name, acronym, specific term) the query names literally,
+      the flip side of the very failure mode the numeric-question
+      recency-bias work (above) already found for lexical-vs-semantic
+      mismatches. Added a sparse (BM25) retriever
+      (`src/retrieval/bm25.py::BM25Factory`, via
+      `langchain_community.retrievers.BM25Retriever` /
+      `rank_bm25` -- new dependency) built from the same vectorstore
+      corpus, fused with the existing dense retriever's candidates via
+      Reciprocal Rank Fusion (`src/retrieval/hybrid.py`, standard
+      RRF, `k=60`) before reranking. `RAGResources` gained a
+      `bm25_retriever` field, rebuilt in lockstep with the vectorstore
+      on every `reload_index()` call (`BM25Retriever` has no
+      add-in-place API, so it's rebuilt from scratch each time --
+      infrequent enough, and fast enough at this project's corpus
+      sizes, that this is simple and sufficient).
+      **Deliberately scoped to the plain path only** (no metadata
+      filter, not a numeric question) -- BM25 doesn't support
+      per-document filtering the way FAISS's own filter does, and the
+      numeric-question widening already targets a semantic-recall gap
+      that lexical matching wouldn't help with (that failure's
+      distractor sentence lexically matches the query *better* than the
+      correct chunk does -- BM25 would favor it even more, not less).
+      15 new unit tests (RRF fusion arithmetic, node-level scoping
+      guards confirming BM25 is never invoked on the filter/numeric
+      paths).
+      **Validated against real data:** confirmed hybrid fusion is
+      genuinely active, not a no-op -- on the real Factor Analysis
+      index, fusion changed the top-3 candidate ranking for 3/3 plain
+      questions tested (e.g. "What is factor analysis?": dense alone
+      surfaced a boilerplate software-header chunk first; fusion
+      correctly promoted the actual definitional chunk instead). Full
+      26-question regression suite (Factor Analysis + EfficientNet +
+      the airlock document) re-run through the real `RAGService.ask()`
+      end-to-end: zero regressions (one apparent difference on a
+      re-run traced to pre-existing LLM sampling variance on a
+      *numeric* question -- confirmed unrelated to this change, since
+      hybrid search doesn't touch the numeric path at all).
 - [ ] Parent-child retrieval, context compression.
 
 ## v0.4.0 — Multi-user & production hardening

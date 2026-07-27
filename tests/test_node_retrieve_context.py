@@ -155,3 +155,84 @@ def test_numeric_question_combined_with_metadata_filter():
             "filter": metadata_filter,
         }
     ]
+
+
+def test_hybrid_search_fuses_dense_and_bm25_when_available():
+    """
+    Regression guard for hybrid search: the plain (no filter, no
+    numeric) path should query BOTH retrievers and fuse via RRF, not
+    silently drop back to dense-only, when a bm25_retriever is present.
+    """
+    shared = Document(page_content="shared chunk")
+    dense_only = Document(page_content="dense only chunk")
+    bm25_only = Document(page_content="bm25 only chunk")
+    retriever = FakeRetriever([shared, dense_only])
+    bm25_retriever = FakeRetriever([shared, bm25_only])
+    state = {"query": "q", "rewritten_query": "", "metadata_filter": None, "documents": []}
+
+    result = retrieve_documents(
+        state, make_resources(retriever=retriever, bm25_retriever=bm25_retriever)
+    )
+
+    assert retriever.queries == ["q"]
+    assert bm25_retriever.queries == ["q"]
+    # The chunk both retrievers agree on should be fused to the front.
+    assert result["documents"][0] == shared
+    assert {d.page_content for d in result["documents"]} == {
+        "shared chunk",
+        "dense only chunk",
+        "bm25 only chunk",
+    }
+
+
+def test_no_bm25_retriever_falls_back_to_dense_only():
+    # bm25_retriever is None (e.g. resources built without an index at
+    # startup) -- must behave exactly like the pre-hybrid-search path,
+    # not crash trying to call it.
+    retriever = FakeRetriever([Document(page_content="dense chunk")])
+    state = {"query": "q", "rewritten_query": "", "metadata_filter": None, "documents": []}
+
+    result = retrieve_documents(
+        state, make_resources(retriever=retriever, bm25_retriever=None)
+    )
+
+    assert result["documents"] == [Document(page_content="dense chunk")]
+
+
+def test_metadata_filter_does_not_invoke_bm25():
+    # Hybrid search is deliberately scoped to the plain path -- a
+    # metadata-filtered query must not touch BM25 at all.
+    vectorstore = FakeVectorStore([Document(page_content="filtered chunk")])
+    bm25_retriever = FakeRetriever([Document(page_content="should not be used")])
+    state = {
+        "query": "q",
+        "rewritten_query": "",
+        "metadata_filter": {"source": "x.pdf"},
+        "documents": [],
+    }
+
+    retrieve_documents(
+        state, make_resources(vectorstore=vectorstore, bm25_retriever=bm25_retriever)
+    )
+
+    assert bm25_retriever.queries == []
+
+
+def test_numeric_question_does_not_invoke_bm25():
+    # Same scoping decision as the filter case -- the numeric-question
+    # widening targets a semantic-recall gap BM25 wouldn't help with
+    # (see nodes/retrieve_context.py's comment on this).
+    vectorstore = FakeVectorStore([Document(page_content="x")])
+    bm25_retriever = FakeRetriever([Document(page_content="should not be used")])
+    state = {
+        "query": "What was the sample size in this study?",
+        "rewritten_query": "",
+        "metadata_filter": None,
+        "documents": [],
+    }
+
+    retrieve_documents(
+        state, make_resources(vectorstore=vectorstore, bm25_retriever=bm25_retriever)
+    )
+
+    assert bm25_retriever.queries == []

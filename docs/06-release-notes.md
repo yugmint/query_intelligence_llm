@@ -6,6 +6,30 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.5.0] — 2026-07-27
+
+**Added:**
+- Metadata-aware retrieval filtering. `/query` accepts an optional
+  `source` field (`RAGService.ask()`'s new `metadata_filter` param)
+  to scope a question to one previously-ingested document instead of
+  searching the whole index — matters now that ingestion is additive
+  (v0.4.0) and one index can hold several unrelated documents.
+  `nodes/retrieve_context.py` calls `vectorstore.similarity_search`
+  directly when a filter is present (FAISS's own native metadata
+  filter support), falling back to the existing pre-built retriever
+  unchanged when it isn't. New `GET /sources` endpoint
+  (`RAGService.list_sources()`) so a caller can discover valid
+  `source` values instead of guessing a filename.
+- 8 new unit tests covering the filter-branching retrieval path,
+  `ask()`'s filter threading, and `list_sources()`.
+
+**Validated:** real embeddings, real shared 2-document FAISS index
+("Grandma's Bag of Stories" + `Factor_Analysis.pdf`) — `list_sources()`
+correctly reports both documents' chunk counts; a question scoped via
+`source` filter to the *wrong* document correctly retrieves zero chunks
+and gets a safe "I don't know" instead of leaking the other document's
+content. Full suite: 90/90 passing.
+
 ## [0.4.4] — 2026-07-27
 
 Docs only — no code changed. `docs/05-roadmap.md` was missing four

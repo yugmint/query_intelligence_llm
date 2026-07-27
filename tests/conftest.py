@@ -72,7 +72,27 @@ class FakeReranker:
         return scores
 
 
-def make_resources(llm=None, retriever=None, reranker=None) -> RAGResources:
+class FakeVectorStore:
+    """
+    Stand-in for resources.vectorstore -- specifically its
+    .similarity_search(query, k, filter=...) method, the direct-vectorstore
+    fallback path retrieve_documents() uses when a metadata_filter is
+    present (VectorStoreRetriever has no way to accept a per-query filter
+    override). Records every call's args and returns a scripted list of
+    documents, ignoring the filter itself -- the node's job is just to
+    pass it through correctly, not to actually filter.
+    """
+
+    def __init__(self, documents):
+        self._documents = documents
+        self.calls: list[dict] = []
+
+    def similarity_search(self, query: str, k=None, filter=None):
+        self.calls.append({"query": query, "k": k, "filter": filter})
+        return self._documents
+
+
+def make_resources(llm=None, retriever=None, reranker=None, vectorstore=None) -> RAGResources:
     """
     Build a RAGResources with only the fields a given node actually uses
     populated -- the rest are None, which is fine since nothing in these
@@ -81,7 +101,7 @@ def make_resources(llm=None, retriever=None, reranker=None) -> RAGResources:
     return RAGResources(
         llm=llm,
         embeddings=None,
-        vectorstore=None,
+        vectorstore=vectorstore,
         retriever=retriever,
         reranker=reranker,
     )

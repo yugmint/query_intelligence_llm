@@ -91,9 +91,34 @@ features. All three shipped in the same session as `v0.0.1`.
       Full validation: `docs/reports/2026-07-24-reranking-validation.md`.
       Design rationale (why a cross-encoder, why 15 candidates, why not
       reorder the graph differently): `07-design-decisions.md`.
-- [ ] Metadata-aware retrieval — filter by `document_type`, source, etc.
-      The ingestion side already attaches this metadata per chunk;
-      nothing here queries on it yet.
+- [x] **Metadata-aware retrieval filtering — shipped and validated
+      2026-07-27.** `/query` accepts an optional `source` field (API) /
+      `metadata_filter` param (`RAGService.ask()`), threaded through
+      `RAGState.metadata_filter` to `nodes/retrieve_context.py`: when
+      present, retrieval calls `resources.vectorstore.similarity_search`
+      directly (FAISS's own native metadata filter support) instead of
+      the pre-built `resources.retriever`, which has no way to accept a
+      per-query filter override (its `search_kwargs` are fixed at
+      construction time). Unfiltered queries are unchanged — same
+      retriever, same code path as before this existed. Added a new
+      `GET /sources` endpoint (`RAGService.list_sources()`) so a caller
+      can discover valid `source` values instead of guessing a filename;
+      without it, source-filtering would be nearly unusable. Matters now
+      that ingestion is additive (v0.4.0): one index can hold several
+      unrelated documents, and until this, a query had no way to scope
+      itself to just one of them.
+      Verified against a real shared 2-document index (`faiss_index/`,
+      "Grandma's Bag of Stories" + `Factor_Analysis.pdf`, ingested via
+      the sibling `ingestion_fixed` pipeline): `list_sources()` correctly
+      reports both (314 and 83 chunks); an unfiltered "grandmother"
+      question correctly retrieves only from the Grandma document; the
+      same question filtered to `Factor_Analysis.pdf` retrieves **zero**
+      documents and the model answers "I don't know" — proving the
+      filter genuinely excludes the other document's content rather
+      than just re-ranking around it. 8 new unit tests (filter-branching
+      in `retrieve_documents`, `ask()`'s filter threading,
+      `list_sources()` aggregation/edge cases); full suite: 90/90
+      passing, zero regressions.
 - [ ] Better chunk selection / dedup at the `retrieve` node. Partially
       addressed by reranking (a cross-encoder naturally down-ranks
       near-duplicate/redundant chunks relative to a genuinely distinct

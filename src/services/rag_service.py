@@ -100,6 +100,7 @@ class RAGService:
         query: str,
         session_id: str = DEFAULT_SESSION_ID,
         return_state: bool = False,
+        metadata_filter: dict | None = None,
     ):
         """
         Ask a question to the RAG system.
@@ -116,6 +117,14 @@ class RAGService:
         return_state : bool
             If True, returns the complete workflow state.
             Otherwise returns only the generated answer.
+
+        metadata_filter : dict | None
+            Optional filter applied at retrieval time, e.g.
+            {"source": "EfficientNet.pdf"} to scope this query to one
+            previously-ingested document instead of searching the whole
+            index. None (default) searches everything, unchanged from
+            before this existed. See RAGState.metadata_filter and
+            nodes/retrieve_context.py for how it's applied.
 
         Returns
         -------
@@ -159,6 +168,8 @@ class RAGService:
             "intent": "",
 
             "rewritten_query": "",
+
+            "metadata_filter": metadata_filter,
 
             "documents": [],
 
@@ -225,3 +236,32 @@ class RAGService:
             )
         else:
             logger.info("Vector index reloaded.")
+
+    def list_sources(self) -> list[dict]:
+        """
+        Distinct documents currently in the index, with a chunk count
+        and (best-effort) document_type per source -- lets a caller
+        discover valid values for ask()'s metadata_filter/the API's
+        `source` field before guessing at a filename. Without this,
+        source-filtering is nearly unusable in practice: there was no
+        way to know what's actually in the index to filter by.
+
+        FAISS's LangChain wrapper has no public "list all documents"
+        API; `vectorstore.docstore._dict` (private, but the only way in)
+        is the same access pattern already used throughout this
+        project's own debugging/validation scripts this session.
+        """
+
+        if self.resources.vectorstore is None:
+            return []
+
+        counts: dict[str, dict] = {}
+        for doc in self.resources.vectorstore.docstore._dict.values():
+            source = doc.metadata.get("source", "unknown")
+            entry = counts.setdefault(
+                source,
+                {"source": source, "document_type": doc.metadata.get("document_type"), "chunk_count": 0},
+            )
+            entry["chunk_count"] += 1
+
+        return sorted(counts.values(), key=lambda e: e["source"])

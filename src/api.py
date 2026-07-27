@@ -71,6 +71,14 @@ rag = RAGService()
 class QueryRequest(BaseModel):
     query: str
     session_id: str = DEFAULT_SESSION_ID
+    # Scopes this query to one previously-ingested document instead of
+    # searching the whole index -- matters now that ingestion is
+    # additive (v0.4.0) and one index can hold several unrelated
+    # documents. Matched against each chunk's "source" metadata
+    # (the filename ingestion_fixed recorded it under); see GET
+    # /sources for the actual values available to filter by. None
+    # (default) searches everything, unchanged from before this existed.
+    source: str | None = None
 
 
 class QueryResponse(BaseModel):
@@ -91,8 +99,15 @@ def query(request: Request, body: QueryRequest):
     if not body.query or not body.query.strip():
         raise HTTPException(status_code=400, detail="query must not be empty")
 
+    metadata_filter = {"source": body.source} if body.source else None
+
     try:
-        state = rag.ask(body.query, session_id=body.session_id, return_state=True)
+        state = rag.ask(
+            body.query,
+            session_id=body.session_id,
+            return_state=True,
+            metadata_filter=metadata_filter,
+        )
     except Exception as exc:
         # The LLM call inside this workflow already retries transient
         # failures (LLMFactory's max_retries + client-side rate limiting --
@@ -114,6 +129,16 @@ def query(request: Request, body: QueryRequest):
         status=state.get("status", ""),
         session_id=body.session_id,
     )
+
+
+@app.get("/sources", dependencies=[Depends(require_api_key)])
+def sources():
+    """
+    Distinct documents currently in the index, with a chunk count each.
+    Use a value from here as /query's `source` field to scope a
+    question to one document instead of searching everything.
+    """
+    return {"sources": rag.list_sources()}
 
 
 @app.post("/reload", dependencies=[Depends(require_api_key)])

@@ -15,6 +15,16 @@ class RAGState(TypedDict):
     # -------------------------
     query: str
     rewritten_query: str
+    # Optional metadata filter applied at retrieval time, e.g.
+    # {"source": "EfficientNet.pdf"} to scope a query to one previously
+    # -ingested document. None means unfiltered (search everything in
+    # the index), the existing/default behavior. Passed straight through
+    # to FAISS's own filter support (dict of metadata key -> value, or
+    # MongoDB-style operators -- see FAISS._create_filter_func) by
+    # nodes/retrieve_context.py. Matters now that ingestion is additive
+    # (v0.4.0) -- one index can hold multiple unrelated documents, and
+    # without this a query has no way to avoid searching all of them.
+    metadata_filter: dict[str, Any] | None
 
     # -------------------------
     # Guardrails

@@ -81,11 +81,23 @@ class QueryRequest(BaseModel):
     source: str | None = None
 
 
+class Citation(BaseModel):
+    source: str
+    # None for sources without page-level metadata (ingestion_fixed's
+    # PDFLoader sets it; other loaders may not).
+    page: int | None = None
+
+
 class QueryResponse(BaseModel):
     answer: str
     intent: str = ""
     status: str = ""
     session_id: str = DEFAULT_SESSION_ID
+    # Chunk-provenance, not verified per-claim attribution -- what was
+    # provided as context for this answer, not a guarantee every listed
+    # source was actually drawn on in the final wording. See
+    # src/services/citations.py.
+    citations: list[Citation] = []
 
 
 @app.get("/health")
@@ -128,6 +140,7 @@ def query(request: Request, body: QueryRequest):
         intent=state.get("intent", ""),
         status=state.get("status", ""),
         session_id=body.session_id,
+        citations=state.get("citations", []),
     )
 
 

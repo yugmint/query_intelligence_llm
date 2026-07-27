@@ -365,7 +365,44 @@ Intelligence" as customer-facing phases, but are real, shipped work.
 
 ## v0.5.0 — Enterprise features (README Phase 4)
 
-- [ ] Source citations in generated answers.
+- [x] **Source citations in generated answers — shipped and validated
+      2026-07-27.** `/query` now returns a `citations` field: one entry
+      per distinct `(source, page)` pair among the chunks actually
+      handed to generation, in relevance order
+      (`src/services/citations.py::build_citations`, derived from
+      `RAGState["documents"]` after retrieval → dedup → rerank —
+      computed in `RAGService.ask()`, not a graph node, since it's a
+      response-shaping concern over the final state rather than
+      something any node reads or writes mid-workflow). `page` comes
+      from `ingestion_fixed`'s `PDFLoader`, which already tags every
+      page-level `Document` with `page_number` before chunking (and
+      that metadata already survives chunking — confirmed via
+      `RecursiveChunker`'s `{**document.metadata}` spread); `None` for
+      sources without page-level metadata.
+      **Deliberately chunk-provenance, not verified per-claim
+      attribution:** lists what was provided as context, not a proof the
+      model drew on every listed source in its final wording. Considered
+      asking the model to self-report which chunks it used (e.g. inline
+      `[1]`/`[2]` markers), but `generate_knowledge.py` already has an
+      unused structured-JSON-response attempt that silently fails on
+      nearly every real call (logged as "Structured JSON response not
+      received") — inheriting that same unreliability for citations
+      would make them look more precise than they'd actually be.
+      Chunk-provenance is the honest, verifiable thing to offer instead.
+      New `Citation` pydantic model in `src/api.py`
+      (`{source: str, page: int | None}`); the no-index short-circuit
+      path and conversation-intent answers both correctly return `[]`.
+      `../frontend/index.html` renders it as a `sources:` line alongside
+      the existing `intent:` badge.
+      15 new unit tests. **Validated against real data:** a real query
+      against the live API (`curl -X POST /query`) returned
+      `"citations":[{"source":"Factor_Analysis.pdf","page":3},
+      {"source":"Factor_Analysis.pdf","page":12}]` for "Who documented
+      the scree graph?" — correct, matches the actual source pages.
+      Also verified on the `v0.5.0` metadata-filter path (source-scoped
+      query against the shared 2-document index correctly cited only
+      the filtered document). Playwright screenshot confirms the
+      frontend renders it correctly end-to-end.
 - [ ] Streaming responses.
 - [ ] Observability / metrics dashboard beyond structured logs and
       evaluation CSVs.

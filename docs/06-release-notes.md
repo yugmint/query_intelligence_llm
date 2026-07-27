@@ -6,6 +6,24 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.5.3] — 2026-07-27
+
+**Added:**
+- Source citations. `/query` now returns `citations`: one entry per
+  distinct `(source, page)` pair among the chunks actually handed to
+  generation, in relevance order (`src/services/citations.py`). New
+  `Citation` pydantic model (`{source, page}`) in `src/api.py`.
+  Deliberately chunk-provenance, not verified per-claim attribution --
+  see `docs/05-roadmap.md` v0.5.0 for why self-reported inline
+  citation markers were considered and rejected.
+  `../frontend/index.html` renders it as a `sources:` line.
+  15 new unit tests.
+
+**Validated:** real query against the live API returned correct
+page-level citations matching the actual source pages; verified on
+both the plain and metadata-filtered retrieval paths; Playwright
+screenshot confirms frontend rendering end-to-end.
+
 ## [0.5.2] — 2026-07-27
 
 **Added:**

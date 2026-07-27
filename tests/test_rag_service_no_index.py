@@ -30,6 +30,7 @@ def test_ask_with_return_state_gives_a_consistent_shape(rag_service_no_index):
     assert state["status"] == "no_index"
     assert state["session_id"] == "s1"
     assert "answer" in state and state["answer"]
+    assert state["citations"] == []
 
 
 def test_no_session_created_for_a_short_circuited_query(rag_service_no_index):

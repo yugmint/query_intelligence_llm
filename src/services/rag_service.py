@@ -6,6 +6,7 @@ from langchain_core.chat_history import InMemoryChatMessageHistory
 from src.retrieval.memory import get_memory
 from src.retrieval.retriever import RetrieverFactory
 from src.retrieval.vectorstore import VectorStoreFactory
+from src.services.citations import build_citations
 from src.utils.chat_history import format_chat_history
 
 from src.workflow.resources import build_resources
@@ -155,6 +156,7 @@ class RAGService:
                     "intent": "",
                     "status": "no_index",
                     "session_id": session_id,
+                    "citations": [],
                 }
             return answer
 
@@ -191,6 +193,14 @@ class RAGService:
         result = self.workflow.invoke(initial_state)
 
         logger.info("Workflow execution completed.")
+
+        # Provenance for whatever chunks were actually handed to
+        # generation -- see src/services/citations.py for why this is
+        # chunk-provenance, not verified per-claim attribution. Computed
+        # here rather than as a graph node: it's a response-shaping
+        # concern over the final state, not something any node reads or
+        # writes mid-workflow.
+        result["citations"] = build_citations(result.get("documents", []))
 
         if return_state:
             return result

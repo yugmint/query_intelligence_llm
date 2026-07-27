@@ -6,6 +6,25 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.5.2] — 2026-07-27
+
+**Added:**
+- Chunk dedup/diversity at rerank (`nodes/rerank.py::_select_diverse_top_k`):
+  skips a candidate that's a near-duplicate (`difflib.SequenceMatcher`
+  ratio >= `CHUNK_DEDUP_SIMILARITY_THRESHOLD`, default 0.8) of one
+  already selected, letting a genuinely distinct lower-scoring chunk
+  fill that TOP_K slot instead of two near-identical chunks both
+  landing in it. 11 new unit tests.
+
+**Validated:** full 26-question regression suite re-run at the
+retrieve+rerank level — dedup never fired (no natural near-duplicates
+in the existing three documents), zero regressions. Directly confirmed
+the mechanism against the real failure mode it targets: re-ingested
+`Factor_Analysis.pdf` a second time into a scratch index copy (real
+duplicate ingestion) and re-ran a query — correctly skipped 2
+literal-duplicate candidates, returning 3 distinct chunks. Full
+writeup: `docs/05-roadmap.md` v0.2.0.
+
 ## [0.5.1] — 2026-07-27
 
 **Added:**

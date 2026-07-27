@@ -119,11 +119,37 @@ features. All three shipped in the same session as `v0.0.1`.
       in `retrieve_documents`, `ask()`'s filter threading,
       `list_sources()` aggregation/edge cases); full suite: 90/90
       passing, zero regressions.
-- [ ] Better chunk selection / dedup at the `retrieve` node. Partially
-      addressed by reranking (a cross-encoder naturally down-ranks
-      near-duplicate/redundant chunks relative to a genuinely distinct
-      relevant one), but no explicit diversity constraint exists yet —
-      keep as a smaller follow-up, not urgent given reranking's results.
+- [x] **Chunk dedup / diversity at rerank — shipped and validated
+      2026-07-27.** The cross-encoder scores each candidate
+      independently and has no notion of redundancy against what it's
+      already picked, so two near-identical chunks (e.g. from chunk
+      overlap, or the same passage present twice after a re-ingestion)
+      could both land in the reranked top-k, crowding out a genuinely
+      distinct, lower-scoring chunk. `nodes/rerank.py`'s new
+      `_select_diverse_top_k` greedily walks the score-descending
+      ranking and skips any candidate whose text is >=80% similar
+      (`difflib.SequenceMatcher` ratio, `CHUNK_DEDUP_SIMILARITY_THRESHOLD`
+      in `src/retrieval/config.py`) to one already selected, letting the
+      next-best distinct candidate fill that slot instead. Threshold
+      calibrated against `ingestion_fixed`'s real chunk_overlap ratios
+      (~15-22% of chunk_size across its document-type profiles) so
+      normal chunk overlap isn't flagged — only near-total duplicates.
+      Can return fewer than `TOP_K` documents if too few distinct
+      candidates exist, same as the existing "fewer candidates than
+      TOP_K" behavior, rather than padding with near-duplicates.
+      11 new unit tests.
+      **Validated against real data:** re-ran the full 26-question
+      regression suite (Factor Analysis + EfficientNet + the airlock
+      document) at the retrieve+rerank level — dedup never fired on any
+      of the 26 real questions (no natural near-duplicates in these
+      three documents' top candidate pools), confirming zero regressions
+      on the existing suite. To confirm the feature actually works
+      against the failure mode it targets (not just synthetic unit-test
+      strings), re-ingested `Factor_Analysis.pdf` a second time into a
+      scratch copy of its index — real duplicate ingestion, the
+      documented `v0.4.0` incremental-ingestion behavior — and re-ran a
+      real query: correctly skipped 2 literal-duplicate candidates,
+      returning 3 distinct chunks instead of wasting slots on repeats.
 - [x] **Source-attribution failure — fixed 2026-07-26.** The
       EfficientNet report's Q1 (confidently wrong answer, a References-
       section citation mistaken for the document's own title) went

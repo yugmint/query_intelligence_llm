@@ -40,4 +40,16 @@ RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 RERANK_CANDIDATES_NUMERIC = int(os.getenv("RERANK_CANDIDATES_NUMERIC", "80"))
 TOP_K_NUMERIC = int(os.getenv("TOP_K_NUMERIC", "8"))
 
+# How textually similar two candidate chunks need to be (difflib
+# SequenceMatcher ratio, 0-1) before nodes/rerank.py treats the
+# lower-scoring one as a near-duplicate and skips it in favor of the
+# next-best distinct chunk -- see docs/05-roadmap.md v0.2.0 "chunk
+# dedup/diversity". Chunk overlap (RecursiveChunker's chunk_overlap,
+# ~15-22% of chunk_size across ingestion_fixed's profiles) means
+# adjacent real chunks routinely share a literal head/tail substring;
+# 0.8 sits well above what that alone produces, so normal overlap isn't
+# flagged -- only chunks that are near-total duplicates of each other
+# (e.g. genuinely redundant content, or the same passage re-embedded).
+CHUNK_DEDUP_SIMILARITY_THRESHOLD = float(os.getenv("CHUNK_DEDUP_SIMILARITY_THRESHOLD", "0.8"))
+
 pdf_path = "data\Grandma's Bag of Stories by Sudha Murthy.pdf"  ## Paste your pdf path here

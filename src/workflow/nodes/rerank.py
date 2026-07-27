@@ -1,9 +1,57 @@
-from src.retrieval.config import TOP_K, TOP_K_NUMERIC
+from difflib import SequenceMatcher
+
+from src.retrieval.config import CHUNK_DEDUP_SIMILARITY_THRESHOLD, TOP_K, TOP_K_NUMERIC
 from src.workflow.resources import RAGResources
 from src.workflow.state import RAGState
 
 from src.utils.decorators import log_node
 from src.utils.logger import logger
+
+
+def _select_diverse_top_k(ranked, top_k: int):
+    """
+    Greedily walk `ranked` (score-descending (score, Document) pairs) and
+    keep the highest-scoring chunks, skipping any candidate that's a
+    near-duplicate (see CHUNK_DEDUP_SIMILARITY_THRESHOLD) of one already
+    selected. Lets a genuinely distinct, lower-scoring chunk fill the
+    slot a near-duplicate would otherwise have crowded out of TOP_K --
+    the cross-encoder scores each candidate independently and has no
+    notion of redundancy against what it's already picked.
+
+    Can return fewer than `top_k` documents if there aren't enough
+    distinct candidates -- matches the existing "fewer candidates than
+    TOP_K keeps all of them" behavior rather than padding with
+    duplicates.
+
+    Returns the selected (score, Document) pairs, same shape as `ranked`,
+    so callers can still log/use the scores of what was actually kept.
+    """
+
+    selected: list = []
+    skipped = 0
+
+    for score, document in ranked:
+        if len(selected) >= top_k:
+            break
+
+        is_duplicate = any(
+            SequenceMatcher(
+                None, document.page_content, kept.page_content
+            ).ratio()
+            >= CHUNK_DEDUP_SIMILARITY_THRESHOLD
+            for _kept_score, kept in selected
+        )
+
+        if is_duplicate:
+            skipped += 1
+            continue
+
+        selected.append((score, document))
+
+    if skipped:
+        logger.info(f"Skipped {skipped} near-duplicate candidate(s).")
+
+    return selected
 
 
 @log_node("Rerank")
@@ -71,7 +119,8 @@ def rerank_documents(
     # default TOP_K=3 even after reranking. See RERANK_CANDIDATES_NUMERIC/
     # TOP_K_NUMERIC in src/retrieval/config.py.
     top_k = TOP_K_NUMERIC if state.get("is_numeric_question") else TOP_K
-    top_documents = [document for _score, document in ranked[:top_k]]
+    selected = _select_diverse_top_k(ranked, top_k)
+    top_documents = [document for _score, document in selected]
 
     context = "\n\n".join(
         document.page_content
@@ -83,7 +132,7 @@ def rerank_documents(
     # ------------------------
 
     logger.info(f"Reranked {len(candidates)} candidates -> kept top {len(top_documents)}")
-    logger.info(f"Top scores: {[round(float(s), 3) for s, _ in ranked[:top_k]]}")
+    logger.info(f"Top scores: {[round(float(s), 3) for s, _ in selected]}")
     logger.info(f"Context Length : {len(context)} chars")
 
     # ------------------------

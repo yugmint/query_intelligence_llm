@@ -6,6 +6,18 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.4.4] — 2026-07-27
+
+Docs only — no code changed. `docs/05-roadmap.md` was missing four
+already-shipped items entirely (they landed as fixes/additions in the
+course of other work, without a corresponding checkbox): the query
+rewriter recency fix, CORS middleware, the new `../frontend`, and the
+optional local GPU acceleration docs. Added all four in their proper
+places (query rewriter under v0.2.0, CORS under v0.4.0, frontend + GPU
+under a new "Local tooling" section for work that doesn't fit the
+5-phase customer-facing framing) so the roadmap accurately reflects
+what's actually been built.
+
 ## [0.4.3] — 2026-07-26
 
 **Added:**

@@ -152,6 +152,21 @@ features. All three shipped in the same session as `v0.0.1`.
       guarantee it resolves the ranking itself) or a dedicated numeric
       question path. Not attempted; deprioritized relative to shipping.
       Full trace: `docs/reports/2026-07-25-airlock-paper-e2e-test.md`.
+- [x] **Query rewriter recency bug — fixed 2026-07-26.** Found via real
+      multi-turn use through `../frontend`: the rewrite prompt said
+      "resolve pronouns using history" with no guidance on *which*
+      referent to prefer when more than one topic had come up. Given
+      history that covered a paper's improvements broadly, then
+      specifically defined "spatial pyramid pooling" in the very next
+      turn, "give me detailed intuition of it" resolved to "intuition
+      of the proposed model" (the earlier, more-discussed topic)
+      instead of "intuition of spatial pyramid pooling" (what was
+      actually named last) — a wrong, repeated-earlier-answer, not a
+      retrieval failure. Added an explicit recency-priority rule plus a
+      matching few-shot example to `src/processing/query_rewriter.py`.
+      Reproduced against the real LLM with the exact failing
+      conversation, before and after: 3/3 consistent correct resolution
+      after the fix, existing examples unaffected.
 
 (Query rewriting — `QueryRewriter` / `process_query` — already shipped,
 landed in commit `5e12446`.)
@@ -231,6 +246,44 @@ landed in commit `5e12446`.)
       `RuntimeError`, not a warn-and-allow-everything no-op -- a single
       missing env var in deployment config can no longer silently give
       public unauthenticated access. Applied identically to both APIs.
+- [x] **CORS middleware — fixed 2026-07-26.** Neither API had any CORS
+      configuration at all -- browsers silently block every request
+      from any frontend not served from the exact same origin,
+      including a `file://`-opened local HTML page (exactly how
+      `../frontend/index.html` runs). Found while wiring that frontend
+      up. `CORSMiddleware` added, wide open by default
+      (`CORS_ALLOW_ORIGINS` env override for a real deployment that
+      wants to restrict it) -- API-key auth is the actual
+      access-control layer once `APP_ENV` is outside `development`,
+      CORS alone was never meant to be that. Verified via a real
+      preflight request with `Origin: null` (what `file://` pages send)
+      against a live server.
+
+## Local tooling (outside the 5-phase framing)
+
+Developer-experience additions that don't fit "Production RAG Workflow →
+Intelligence Layer → Advanced Retrieval → Enterprise Features → Agentic
+Intelligence" as customer-facing phases, but are real, shipped work.
+
+- [x] **`../frontend` — a local chat UI, added 2026-07-26.** Single-file
+      HTML/JS, no build step, no Python environment of its own -- talks
+      directly to this API and the ingestion API. Replaced an earlier
+      Streamlit prototype once this held up in testing. Each sidebar
+      conversation maps onto a real `session_id`; attaching a file
+      routes to `/ingest` and auto-calls `/reload` afterward instead of
+      requiring a manual step. Verified with a real Playwright-driven
+      Chromium run against both live backends (ingest → auto-reload →
+      grounded query → settings → theming → multi-conversation), zero
+      console errors, zero failed requests. See `../frontend/README.md`.
+- [x] **Optional local GPU acceleration — documented 2026-07-26.** No
+      application code changed -- `EmbeddingFactory` and the reranker
+      already auto-detected CUDA; the gap was only which `torch` build
+      happens to be installed. `requirements.txt` stays pinned to
+      CPU-only deliberately (installs cleanly in the CI above and most
+      cloud deployment targets without a GPU) -- this is a documented
+      local opt-in only. Measured effect (GTX 1650, 4GB): reranking
+      dropped from ~700-725ms to ~125-180ms, a real 4-5x speedup. See
+      `docs/03-development-guide.md`.
 
 ## v0.5.0 — Enterprise features (README Phase 4)
 

@@ -460,6 +460,37 @@ Intelligence" as customer-facing phases, but are real, shipped work.
       local opt-in only. Measured effect (GTX 1650, 4GB): reranking
       dropped from ~700-725ms to ~125-180ms, a real 4-5x speedup. See
       `docs/03-development-guide.md`.
+- [x] **Automated retrieval + generation benchmark — added 2026-07-28.**
+      `scripts/benchmark.py`, from an external review of the
+      2026-07-28 history-book E2E test: replaces the ad-hoc manual
+      "PRIOR/NOW" spot-checking this session otherwise relied on for
+      every regression check. Ground truth reuses question/answer/
+      source/page triples already hand-verified against real document
+      text this session, not invented for the occasion.
+      Retrieval metrics (Hit@1/Hit@3/Recall@5/MRR/Precision@5) computed
+      from the raw ranked candidate list under binary relevance
+      (chunk on the expected page or not). **Deliberately doesn't
+      implement nDCG**, despite being asked for: with only binary
+      relevance judgments (no graded 0-3 relevance data exists or is
+      planned), nDCG collapses to the same ordering signal Hit@K/MRR
+      already capture -- would be a second metric name for the same
+      number, not new information.
+      End-to-end metrics via a real `RAGService.ask()` call:
+      answer_correct (expected substring found), citation_correct,
+      potential_hallucination (a heuristic proxy: non-refusal answer
+      that misses the expected substring -- not an LLM-judged
+      hallucination detector, which is real future scope, not this),
+      latency.
+      Manual dev-run script (`python scripts/benchmark.py`), same
+      precedent as `measure_reranking_latency.py` -- needs real
+      indexes/LLM calls, not wired into CI. 8 unit tests for the pure
+      metric functions.
+      **Real run, 7 questions across 4 real documents:** 100% answer
+      correctness, 100% citation accuracy (3 judgeable), 0% potential
+      hallucination, Hit@3/Recall@5 both 100%, MRR 0.78. Also surfaced
+      a real number worth tracking going forward: mean latency 25.1s/
+      question -- confirms per-node observability's earlier finding
+      (Intent + Generate_Knowledge dominate) at the end-to-end level.
 
 ## v0.5.0 — Enterprise features (README Phase 4)
 

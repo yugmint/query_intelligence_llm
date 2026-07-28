@@ -6,6 +6,26 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.6.3] — 2026-07-28
+
+**Added:**
+- Comparison-aware retrieval. `src/processing/comparison_question.py`
+  detects both real comparison shapes found in this project's own
+  benchmark: explicit ("Compare X and Y") gets two independent
+  retrievals merged and deduped; implicit ("Which X had the better
+  Y?", no named sides) reuses the existing numeric-question candidate-
+  pool widening. New `is_comparison_question` state flag also widens
+  `TOP_K` in reranking. 21 new tests.
+
+**Validated:** the drainage-system regression from 0.6.2 now answers
+correctly through the primary model alone (no escalation needed).
+Full 92-case regression hit Groq's *daily* token quota (500,000 TPD,
+a different ceiling than the per-minute one) mid-run, from today's
+heavy testing volume -- 85/92 completed with no dramatic regression,
+but the run crashed just before reaching L5-Cross-document, the
+category this feature targets. Completing that validation is the
+immediate next step once the quota resets, not deferred indefinitely.
+
 ## [0.6.2] — 2026-07-28
 
 **Added:**

@@ -84,11 +84,19 @@ class FakeVectorStore:
     """
 
     def __init__(self, documents):
+        # `documents`: either a flat list (every call returns the same
+        # list) or a list of lists (consumed one per call, last one
+        # repeats once exhausted) -- the latter lets a test give
+        # different calls different results, e.g. comparison
+        # split-retrieval's two similarity_search calls.
         self._documents = documents
         self.calls: list[dict] = []
 
     def similarity_search(self, query: str, k=None, filter=None):
         self.calls.append({"query": query, "k": k, "filter": filter})
+        if self._documents and isinstance(self._documents[0], list):
+            index = min(len(self.calls) - 1, len(self._documents) - 1)
+            return self._documents[index]
         return self._documents
 
 

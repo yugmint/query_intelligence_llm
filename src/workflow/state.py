@@ -32,6 +32,11 @@ class RAGState(TypedDict):
     # doesn't take this as a param, unlike metadata_filter) -- it's
     # derived from the query itself, not something a caller decides.
     is_numeric_question: bool
+    # Set by nodes/retrieve_context.py via comparison_question.py. Same
+    # shape as is_numeric_question -- widens the candidate pool there
+    # and TOP_K in nodes/rerank.py, since a comparison needs room for
+    # both things being compared, not just the single best match.
+    is_comparison_question: bool
 
     # -------------------------
     # Guardrails

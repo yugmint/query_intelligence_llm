@@ -854,6 +854,52 @@ using the ones we do spend more carefully.
       post-rerank retrieval metric (reusing `nodes/rerank.py`'s own
       output) is the natural next step if this gap needs closing rather
       than just measuring.
+- [x] **Comparison-aware retrieval — shipped 2026-07-28, validation
+      incomplete (real external constraint, not skipped).** Third item
+      from the same external feedback. Found the real failing
+      questions (L5-Cross-document) are almost entirely the *implicit*
+      superlative form ("Which X had the better Y?") with no named
+      sides -- not the *explicit* "Compare X and Y" form the feedback's
+      own diagram assumed. Built both, since both are real shapes in
+      this project's own benchmark:
+      `src/processing/comparison_question.py` -- `extract_comparison_sides()`
+      (regex, "compare X and Y"/"X vs Y"/"difference between X and Y")
+      for the explicit form, `is_implicit_comparison()` for the
+      superlative form with no sides to extract.
+      `nodes/retrieve_context.py`: explicit sides get two independent
+      `similarity_search` calls (one per side) merged and deduped by
+      `(source, chunk_id)`, so one side can't crowd the other out of a
+      single ranked list; implicit comparisons reuse the existing
+      numeric-question widening lever (`RERANK_CANDIDATES_NUMERIC` --
+      same underlying reason, TOP_K=3 is too narrow). New
+      `is_comparison_question` state flag (same shape as
+      `is_numeric_question`) also widens `TOP_K` in `nodes/rerank.py`.
+      21 new tests, including a regression guard against the real
+      benchmark set (every real "Compare X and Y" L2 case extracts
+      real sides; every real L5-Cross-document superlative case is
+      detected).
+      **Validated against real Groq calls where possible:** the
+      drainage-system question that regressed in the chunking-quality
+      work now answers correctly through the *primary* model alone
+      (no escalation call needed -- cheaper and correct); both
+      explicit "Compare X and Y" spot-checks produced genuinely
+      well-structured two-sided answers.
+      **Full 92-case regression run hit a real, new external wall
+      mid-run: Groq's *daily* token quota (500,000 TPD) for
+      `llama-3.1-8b-instant`, separate from the per-minute ceiling
+      every earlier fix this session targeted** -- exhausted by today's
+      unusually heavy testing volume (this run plus the two before it
+      plus dozens of diagnostic calls). 85/92 cases completed before
+      the crash: no dramatic regression across L1/L3/L4/L5-Synonyms/
+      L5-Indirect/Manual Spot-Check (flat vs. the v3 baseline); L2 and
+      L6 each dropped one case (85%<-90%, 80%<-90%) -- single-case
+      flips, plausibly the same LLM wording non-determinism seen
+      elsewhere this session, not confirmed as a real regression.
+      **The run crashed immediately before reaching L5-Cross-document
+      itself** -- the one category this whole feature targets has no
+      fresh full-batch data. Re-running that category (and the other
+      2 untested L5-Ambiguous cases) once the daily quota resets is
+      the immediate next action, not a "someday" item.
 
 ## Unscheduled
 

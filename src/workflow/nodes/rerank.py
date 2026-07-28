@@ -114,12 +114,15 @@ def rerank_documents(
         reverse=True,
     )
 
-    # Numeric questions get a wider TOP_K -- the whole reason
-    # retrieve_context.py widened the candidate pool for them in the
-    # first place is that the correct chunk can rank well outside the
-    # default TOP_K=3 even after reranking. See RERANK_CANDIDATES_NUMERIC/
-    # TOP_K_NUMERIC in src/retrieval/config.py.
-    top_k = TOP_K_NUMERIC if state.get("is_numeric_question") else TOP_K
+    # Numeric and comparison questions both get a wider TOP_K -- the
+    # whole reason retrieve_context.py widened the candidate pool for
+    # them in the first place is that the default TOP_K=3 is too
+    # narrow: a numeric answer's chunk can rank well outside it even
+    # after reranking, and a comparison needs room for both things
+    # being compared, not just the single best match. See
+    # RERANK_CANDIDATES_NUMERIC/TOP_K_NUMERIC in src/retrieval/config.py
+    # (reused for comparisons too -- same underlying reason).
+    top_k = TOP_K_NUMERIC if state.get("is_numeric_question") or state.get("is_comparison_question") else TOP_K
     selected = _select_diverse_top_k(ranked, top_k)
     top_documents = [document for _score, document in selected]
 

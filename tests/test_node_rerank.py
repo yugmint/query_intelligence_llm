@@ -177,6 +177,26 @@ def test_non_numeric_question_keeps_default_top_k():
     assert len(result["documents"]) == TOP_K
 
 
+def test_comparison_question_uses_wider_top_k():
+    # Same widening lever as numeric, and for the same underlying
+    # reason: a comparison needs room for both things being compared,
+    # not just the single best match.
+    n = TOP_K_NUMERIC - 1
+    candidates = _distinct_docs(n)
+    scores = list(reversed(range(n)))
+    reranker = FakeReranker(scores)
+    state = {
+        "query": "q",
+        "rewritten_query": "",
+        "documents": candidates,
+        "is_comparison_question": True,
+    }
+
+    result = rerank_documents(state, make_resources(reranker=reranker))
+
+    assert len(result["documents"]) == n
+
+
 def test_missing_numeric_flag_defaults_to_default_top_k():
     # State built before this feature existed (or a node that never set
     # it) shouldn't accidentally widen -- absence must mean "no".

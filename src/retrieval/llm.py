@@ -57,6 +57,16 @@ class LLMFactory:
             # (0.08/sec = 4.8 calls/min =~ 4800 tokens/min budget at
             # ~1000 tokens/call, leaving headroom for larger-than-average
             # contexts) rather than riding the exact limit.
+            #
+            # Separate, harder ceiling found 2026-07-28, not something
+            # this rate limiter (or any client-side throttling) can
+            # smooth over: Groq also caps `llama-3.1-8b-instant` at
+            # 500,000 tokens/*day* (TPD), a real budget that a single
+            # day of heavy benchmark/dev traffic can exhaust outright
+            # (confirmed by an actual mid-run 429 -- see
+            # docs/05-roadmap.md v0.6.0 "comparison-aware retrieval").
+            # No code fix for this -- it's a genuine daily spend cap,
+            # not a burst-shaping problem.
             rate_limiter = InMemoryRateLimiter(
                 requests_per_second=0.08,
                 check_every_n_seconds=0.1,

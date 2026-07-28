@@ -236,3 +236,91 @@ def test_numeric_question_does_not_invoke_bm25():
     )
 
     assert bm25_retriever.queries == []
+
+
+def test_implicit_comparison_widens_candidate_pool():
+    # "Which X had the better Y?" -- no named sides, so the only lever
+    # is a wider single-query candidate pool, same mechanism as numeric.
+    vectorstore = FakeVectorStore([Document(page_content="x")])
+    state = {
+        "query": "Which civilization had the better drainage system?",
+        "rewritten_query": "",
+        "metadata_filter": None,
+        "documents": [],
+    }
+
+    result = retrieve_documents(state, make_resources(vectorstore=vectorstore))
+
+    assert vectorstore.calls == [
+        {
+            "query": "Which civilization had the better drainage system?",
+            "k": RERANK_CANDIDATES_NUMERIC,
+            "filter": None,
+        }
+    ]
+    assert result["is_comparison_question"] is True
+    assert result["is_numeric_question"] is False
+
+
+def test_explicit_comparison_retrieves_each_side_and_merges():
+    doc_a = Document(page_content="about Harappan", metadata={"source": "x.pdf", "chunk_id": 1})
+    doc_b = Document(page_content="about Vedic", metadata={"source": "x.pdf", "chunk_id": 2})
+    vectorstore = FakeVectorStore([[doc_a], [doc_b]])
+    state = {
+        "query": "Compare Harappan and Vedic societies.",
+        "rewritten_query": "",
+        "metadata_filter": None,
+        "documents": [],
+    }
+
+    result = retrieve_documents(state, make_resources(vectorstore=vectorstore))
+
+    assert [c["query"] for c in vectorstore.calls] == ["Harappan", "Vedic societies"]
+    assert result["documents"] == [doc_a, doc_b]
+    assert result["is_comparison_question"] is True
+
+
+def test_explicit_comparison_dedupes_shared_chunks():
+    shared = Document(page_content="shared", metadata={"source": "x.pdf", "chunk_id": 1})
+    vectorstore = FakeVectorStore([shared])  # both calls return the same chunk
+
+    state = {
+        "query": "Compare Harappan and Vedic societies.",
+        "rewritten_query": "",
+        "metadata_filter": None,
+        "documents": [],
+    }
+
+    result = retrieve_documents(state, make_resources(vectorstore=vectorstore))
+
+    assert result["documents"] == [shared]  # not duplicated
+
+
+def test_explicit_comparison_does_not_invoke_bm25_or_retriever():
+    doc = Document(page_content="x", metadata={"source": "x.pdf", "chunk_id": 1})
+    vectorstore = FakeVectorStore([doc])
+    retriever = FakeRetriever([Document(page_content="should not be used")])
+    bm25_retriever = FakeRetriever([Document(page_content="should not be used")])
+    state = {
+        "query": "Compare Harappan and Vedic societies.",
+        "rewritten_query": "",
+        "metadata_filter": None,
+        "documents": [],
+    }
+
+    retrieve_documents(
+        state,
+        make_resources(vectorstore=vectorstore, retriever=retriever, bm25_retriever=bm25_retriever),
+    )
+
+    assert retriever.queries == []
+    assert bm25_retriever.queries == []
+
+
+def test_plain_question_is_not_flagged_as_comparison():
+    retriever = FakeRetriever([Document(page_content="x")])
+    state = {"query": "What is factor analysis?", "rewritten_query": "", "documents": []}
+
+    result = retrieve_documents(state, make_resources(retriever=retriever))
+
+    assert result["is_comparison_question"] is False

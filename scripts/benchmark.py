@@ -47,6 +47,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.processing.refusal_detector import is_refusal as _is_refusal  # noqa: E402
+
 CASES = [
     # Factor Analysis -- local/test_reports/factor_analysis_index
     dict(
@@ -492,36 +494,6 @@ def retrieval_metrics(vectorstore, query, expected_source, expected_page, k=15):
     }
 
 
-# Broader than a literal "i don't know" -- Level 6 "Failure Tests" cases
-# (scripts/benchmark.py CASES, is_refusal=True) expect a hedge/refusal
-# phrased any number of ways ("not mentioned", "the document does not
-# specify", "no information about", etc.), not that one exact sentence.
-_REFUSAL_PHRASES = [
-    "i don't know",
-    "not mentioned",
-    "not specified",
-    "not available",
-    "not stated",
-    "not provided",
-    "no information",
-    "does not mention",
-    "does not specify",
-    "does not provide",
-    "does not state",
-    "unclear from",
-    "cannot determine",
-    "unable to determine",
-    "insufficient information",
-    "no mention of",
-    "the document does not",
-    "not indicate",
-]
-
-
-def _is_refusal(answer_lower: str) -> bool:
-    return any(phrase in answer_lower for phrase in _REFUSAL_PHRASES)
-
-
 def generation_metrics(rag_service, case):
     start = time.perf_counter()
     state = rag_service.ask(case["question"], session_id=f"bench-{hash(case['question'])}", return_state=True)
@@ -572,7 +544,7 @@ def _mean(values):
     return statistics.mean(values) if values else float("nan")
 
 
-def _build_rag_service(index_path, embeddings, reranker, llm):
+def _build_rag_service(index_path, embeddings, reranker, llm, escalation_llm=None):
     """
     RAGService normally builds its own resources via build_resources(),
     which reads FAISS_INDEX_PATH once at *import* time (a `from ... import
@@ -599,6 +571,7 @@ def _build_rag_service(index_path, embeddings, reranker, llm):
         retriever=RetrieverFactory.build(vectorstore),
         reranker=reranker,
         bm25_retriever=BM25Factory.build(vectorstore),
+        escalation_llm=escalation_llm,
     )
 
     original_build_resources = rag_service_module.build_resources
@@ -619,6 +592,7 @@ def main():
     embeddings = EmbeddingFactory.get()
     reranker = RerankerFactory.get()
     llm = LLMFactory.get()
+    escalation_llm = LLMFactory.get_escalation()
 
     results = []
     for case in CASES:
@@ -627,7 +601,7 @@ def main():
             print(f"SKIP  {case['dataset']!r} / {case['question']!r} -- index not found at {index_path}")
             continue
 
-        rag_service, vectorstore = _build_rag_service(index_path, embeddings, reranker, llm)
+        rag_service, vectorstore = _build_rag_service(index_path, embeddings, reranker, llm, escalation_llm)
 
         r = retrieval_metrics(vectorstore, case["question"], case["expected_source"], case["expected_page"])
         g = generation_metrics(rag_service, case)

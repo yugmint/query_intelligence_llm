@@ -93,7 +93,8 @@ class FakeVectorStore:
 
 
 def make_resources(
-    llm=None, retriever=None, reranker=None, vectorstore=None, bm25_retriever=None
+    llm=None, retriever=None, reranker=None, vectorstore=None, bm25_retriever=None,
+    escalation_llm=None,
 ) -> RAGResources:
     """
     Build a RAGResources with only the fields a given node actually uses
@@ -107,6 +108,7 @@ def make_resources(
         retriever=retriever,
         reranker=reranker,
         bm25_retriever=bm25_retriever,
+        escalation_llm=escalation_llm,
     )
 
 

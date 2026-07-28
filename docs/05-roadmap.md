@@ -761,24 +761,34 @@ Intelligence" as customer-facing phases, but are real, shipped work.
 - [ ] Agentic Intelligence (README Phase 5) — multi-agent, tool calling,
       web search. Deliberately not scheduled into a version yet; too far
       out to commit to a shape.
-- [ ] **Comparative questions ("which X had more/better Y") get refused
-      even when the answer is directly in context — investigated
-      2026-07-28, not fixed, real negative evidence recorded.** Traced
-      to `src/prompts/generation.py`'s "base your answer on that
-      sentence alone" guideline as the likely cause -- tested two
-      prompt variants explicitly permitting cross-sentence synthesis
-      for comparison questions, the second one explicitly telling the
-      model "if only one side is discussed, that's the implied answer."
-      **Neither changed the output at all**, even with the full,
-      unambiguous Harappan drainage-system passage sitting directly in
-      context (confirmed by inspecting the actual `state["context"]`
-      passed to the LLM, not assumed) -- ruled out prompt wording as
-      the lever and reverted both (dead-weight complexity with no
-      measured effect isn't worth keeping). Current best explanation:
-      a real capability ceiling of `llama-3.1-8b-instant` (the free-tier
-      model this project runs on) on implicit comparative reasoning,
-      not a retrieval, chunking, or prompt-clarity problem. A real fix
-      would likely need either a stronger model for this call, or a
-      dedicated comparison strategy (separately retrieve/summarize each
-      side of the comparison, then generate over the summaries) --
-      both bigger, separately-scoped changes, not a quick follow-up.
+- [x] **Comparative questions ("which X had more/better Y") get refused
+      even when the answer is directly in context — investigated and
+      fixed 2026-07-28.** Two prompt variants explicitly permitting
+      cross-sentence synthesis were tested first and had **zero
+      effect**, even with the full, unambiguous Harappan
+      drainage-system passage confirmed present in `state["context"]`
+      -- ruled out prompt wording as the lever and reverted both
+      (dead-weight complexity with no measured effect isn't worth
+      keeping). Root cause: a real capability ceiling of
+      `llama-3.1-8b-instant` (the free-tier model this project runs
+      on) on implicit comparative reasoning, confirmed by testing the
+      same 4 refused questions against `openai/gpt-oss-20b` (a Groq
+      MoE model, ~3.6B active params/token) on the identical retrieved
+      context: 0/4 answered -> 2/4 correct, 3/4 non-refusals.
+      Every non-8B free-tier Groq model caps at 1,000 requests/day
+      (vs. 14,400/day for `llama-3.1-8b-instant`) -- ruled out making
+      it the default. Shipped as a **refusal-triggered one-shot
+      retry** instead: `nodes/generate_knowledge.py` only calls
+      `LLMFactory.get_escalation()` (new, own rate limiter) when the
+      primary answer matches `src/processing/refusal_detector.py`
+      (promoted out of `scripts/benchmark.py`, now shared by both) --
+      bounded spend against the tight daily cap, falls back to the
+      original refusal on any escalation failure (429s included) so a
+      cap-exhausted day degrades to old behavior, not a crash. New
+      `metadata["escalated"]` flag for observability. 5 new node tests
+      + 3 new refusal-detector tests.
+      **Validated against real data, not just fakes:** the exact
+      drainage-system question that regressed in the chunking-quality
+      work above now answers correctly through the real wired path
+      (`escalated: True`); an already-correct question confirmed it
+      does NOT waste an escalation call (`escalated: False`).

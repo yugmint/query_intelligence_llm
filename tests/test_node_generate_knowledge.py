@@ -64,3 +64,61 @@ def test_existing_metadata_is_preserved():
 
     assert result["metadata"]["intent"] == "knowledge"
     assert "response_length" in result["metadata"]
+
+
+def test_refusal_retries_with_escalation_llm_and_uses_its_answer():
+    llm = FakeLLM("I don't know.")
+    escalation_llm = FakeLLM('{"response": "The Harappan Civilization."}')
+
+    result = generate_knowledge_response(
+        _state(), make_resources(llm=llm, escalation_llm=escalation_llm)
+    )
+
+    assert result["answer"] == "The Harappan Civilization."
+    assert result["metadata"]["escalated"] is True
+    assert escalation_llm.call_count == 1
+
+
+def test_escalation_llm_also_refusing_keeps_original_refusal():
+    llm = FakeLLM("I don't know.")
+    escalation_llm = FakeLLM("I don't know.")
+
+    result = generate_knowledge_response(
+        _state(), make_resources(llm=llm, escalation_llm=escalation_llm)
+    )
+
+    assert result["answer"] == "I don't know."
+    assert result["metadata"]["escalated"] is False
+
+
+def test_escalation_llm_failure_falls_back_to_primary_refusal():
+    llm = FakeLLM("I don't know.")
+    escalation_llm = FakeLLM(RuntimeError("Groq 429"))
+
+    result = generate_knowledge_response(
+        _state(), make_resources(llm=llm, escalation_llm=escalation_llm)
+    )
+
+    assert result["answer"] == "I don't know."
+    assert result["metadata"]["escalated"] is False
+
+
+def test_no_escalation_llm_configured_skips_retry():
+    llm = FakeLLM("I don't know.")
+
+    result = generate_knowledge_response(_state(), make_resources(llm=llm))
+
+    assert result["answer"] == "I don't know."
+    assert result["metadata"]["escalated"] is False
+
+
+def test_confident_answer_never_triggers_escalation():
+    llm = FakeLLM('{"response": "X is described on page 5."}')
+    escalation_llm = FakeLLM('{"response": "should never be called"}')
+
+    result = generate_knowledge_response(
+        _state(), make_resources(llm=llm, escalation_llm=escalation_llm)
+    )
+
+    assert result["answer"] == "X is described on page 5."
+    assert escalation_llm.call_count == 0

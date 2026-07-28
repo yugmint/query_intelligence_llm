@@ -6,6 +6,24 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.5.13] — 2026-07-28
+
+**Added:**
+- Refusal-triggered escalation retry. `nodes/generate_knowledge.py`
+  retries once with `openai/gpt-oss-20b`
+  (`LLMFactory.get_escalation()`) only when the primary
+  `llama-3.1-8b-instant` answer looks like a refusal -- confirmed by a
+  real test that this model answers comparative questions ("which X
+  had more/better Y") the primary model can't, from the same context.
+  Falls back to the original refusal on any escalation failure. New
+  `src/processing/refusal_detector.py` (promoted out of
+  `scripts/benchmark.py`, now shared).
+
+**Validated:** the drainage-system question that regressed in 0.5.12
+now answers correctly through the real wired path; a confirmed
+already-correct question does not trigger an unnecessary escalation
+call. 8 new tests.
+
 ## [0.5.12] — 2026-07-28
 
 **Fixed:**

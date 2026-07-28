@@ -33,6 +33,12 @@ class RAGResources:
     # convention as them; defaults to None so existing call sites that
     # don't pass it (tests, mainly) don't have to change.
     bm25_retriever: Any = None
+    # Stronger model used only as a one-shot retry when `llm` refuses a
+    # question it had the context for -- see
+    # LLMFactory.get_escalation. Defaults to None, same convention as
+    # bm25_retriever, so nodes/generate_knowledge.py degrades to
+    # "no retry" instead of crashing if it's ever unset (tests, mainly).
+    escalation_llm: Any = None
 
 
 def build_resources() -> RAGResources:
@@ -60,6 +66,8 @@ def build_resources() -> RAGResources:
 
     llm = LLMFactory.get()
 
+    escalation_llm = LLMFactory.get_escalation()
+
     return RAGResources(
         llm=llm,
         embeddings=embeddings,
@@ -67,4 +75,5 @@ def build_resources() -> RAGResources:
         retriever=retriever,
         reranker=reranker,
         bm25_retriever=bm25_retriever,
+        escalation_llm=escalation_llm,
     )

@@ -14,6 +14,7 @@ class LLMFactory:
     """Factory for LLM client instances."""
 
     _instance: Optional[any] = None
+    _escalation_instance: Optional[any] = None
 
     @staticmethod
     def _load_api_key():
@@ -74,3 +75,45 @@ class LLMFactory:
     @classmethod
     def build(cls):
         return cls.get()
+
+    @classmethod
+    def get_escalation(cls):
+        """
+        A stronger model (openai/gpt-oss-20b, MoE -- reasoning quality
+        closer to a much larger dense model at a fraction of the
+        per-token compute) used ONLY as a one-shot retry when the
+        primary model (llama-3.1-8b-instant) refuses to answer a
+        comparative question it actually had the context for --
+        confirmed via a real test (drainage-system/trade-network/
+        technological-leap questions): 0/4 answered by the primary
+        model, 2/4 answered correctly by this one on the exact same
+        retrieved context. See docs/05-roadmap.md.
+
+        Free tier caps this model at 1,000 requests/day (vs. 14,400/day
+        for the primary) -- see the same roadmap entry for why that
+        ruled out making it the default. No daily-cap tracking here
+        (ponytail: this is a rare retry-only path, not the hot path;
+        add real usage accounting if this ever gets close to that
+        ceiling) -- Groq just returns 429s past it, which the retry
+        call's own max_retries/timeout already surfaces as a normal
+        failure, not a crash.
+        """
+
+        if cls._escalation_instance is None:
+
+            cls._load_api_key()
+
+            rate_limiter = InMemoryRateLimiter(
+                requests_per_second=0.1,
+                check_every_n_seconds=0.1,
+                max_bucket_size=1,
+            )
+
+            cls._escalation_instance = ChatGroq(
+                model="openai/gpt-oss-20b",
+                rate_limiter=rate_limiter,
+                max_retries=2,
+                request_timeout=30,
+            )
+
+        return cls._escalation_instance

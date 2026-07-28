@@ -6,6 +6,38 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.5.11] — 2026-07-28
+
+**Fixed:**
+- Intent detection no longer calls the LLM. `route_by_intent` only ever
+  used the result as a binary knowledge/conversation switch, so the
+  3-way LLM classification was answering a question nobody downstream
+  needed at that resolution -- and it was burning a second token per
+  query from the shared rate-limiter bucket
+  (`InMemoryRateLimiter(requests_per_second=0.08, max_bucket_size=2)`),
+  which refills at 1 token/~12.5s. New
+  `src/processing/intent_classifier.py`: anchored regex classification,
+  biased toward "knowledge" as the safe default. 11 new/rewritten
+  tests, including a regression guard against the real 97-question
+  benchmark set.
+
+**Validated:** timed the same 10 real benchmark questions against live
+Groq calls before/after -- mean latency 25.04s -> 12.68s (49%
+reduction).
+
+## [0.5.10] — 2026-07-28
+
+**Added:**
+- `scripts/benchmark.py` extended to all 97 cases across L1-L6 plus
+  Manual Spot-Check (was 22 graded cases), ground-truthed against the
+  real source PDF.
+
+**Result:** 82% answer correctness, 10% potential hallucination, 100%
+citation accuracy (3 judgeable), mean latency 25.04s. Weakest
+categories: L5-Cross-document (40%) and L5-Ambiguous (60%, 40%
+hallucination) -- both by design the hardest cases in the set. See
+`docs/05-roadmap.md` v0.4.0 for the full per-level breakdown.
+
 ## [0.5.9] — 2026-07-28
 
 **Changed:**

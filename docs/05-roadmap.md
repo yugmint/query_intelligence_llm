@@ -521,6 +521,25 @@ Intelligence" as customer-facing phases, but are real, shipped work.
       framing. The facts stated were grounded (not a hallucination),
       but the appropriate epistemic hedging the source itself uses was
       lost -- a real, narrow prompt-quality gap, not fixed here.
+      **Fully graded, all 97 cases, 2026-07-28:** the remaining ~75
+      questions (L1-L4 plus the rest of L5) hand-verified against the
+      real source PDF the same way, including one deliberate
+      `expect_refusal=True` case ("Which site contains the Great Bath?")
+      for a genuine source-content gap -- the document names the Great
+      Bath as an example without ever stating it's at Mohenjo-daro, so
+      answering would need outside knowledge the RAG contract forbids.
+      **Overall: 82% answer correctness, 10% potential hallucination,
+      100% citation accuracy (3 judgeable), mean latency 25.04s.**
+      Per-level: L1 80%, L2 90%, L3 90%, L4 80%, L5-Synonyms 100%,
+      L5-Indirect 80%, L5-Ambiguous 60% (40% hallucination -- the
+      weakest category, expected given ambiguous phrasing is
+      deliberately hard), L5-Cross-document 40% (weakest overall --
+      cross-page synthesis is the genuinely hard case this level is
+      designed to test), L6 refusal-correctness 80%. Latency is flat at
+      ~25s across every level regardless of difficulty -- confirms the
+      cost is the shared rate-limiter bucket wait, not inference time
+      (see the Intent-detection latency fix entry below, found via this
+      exact flatness).
 
 ## v0.5.0 — Enterprise features (README Phase 4)
 
@@ -665,6 +684,41 @@ Intelligence" as customer-facing phases, but are real, shipped work.
       misses coded/implicit toxicity, marked with a `ponytail:` comment
       naming the ceiling (upgrade: Perspective API / a small local
       model) rather than pulling in a new ML dependency for it.
+- [x] **Intent-detection latency fix — shipped and validated
+      2026-07-28.** The 97-case benchmark run showed latency flat at
+      ~25s regardless of question difficulty -- pointed away from
+      inference time and at something fixed per query. Root cause,
+      found by reading code not guessing: `nodes/intent.py` spent a
+      full Groq call classifying every query into 3 buckets
+      (greeting/chit_chat/knowledge), but `workflow.py::route_by_intent`
+      only ever asks the binary question the 3-way result answers
+      ("knowledge" -> retrieve, anything else -> conversation) -- one
+      LLM call answering a question nobody downstream needed at that
+      resolution. Worse, the shared `InMemoryRateLimiter`
+      (`src/retrieval/llm.py`, sized for Groq's 6,000 TPM free-tier
+      ceiling) burns 2 tokens per knowledge query against a bucket that
+      refills 1 token/~12.5s, so every second sequential query paid a
+      full ~25s wait purely for bucket refill.
+      New `src/processing/intent_classifier.py`: anchored regex
+      classification, same pattern as the existing
+      `is_numeric_question` -- no LLM call. Deliberately biased toward
+      "knowledge" as the safe default: misclassifying a real question
+      as conversation skips retrieval and answers ungrounded (the
+      dangerous direction); misclassifying a greeting as knowledge just
+      costs one harmless extra retrieval pass. `nodes/intent.py`
+      rewritten to call it directly. 11 new/rewritten tests, including
+      a regression guard that imports the real 97-question benchmark
+      set from `scripts/benchmark.py` and asserts none of them
+      misclassify as non-knowledge.
+      **Validated against real data, not just unit tests:** timed the
+      same 10 real L1/L2 benchmark questions against live Groq calls
+      before/after -- mean latency **25.04s -> 12.68s** (49% reduction,
+      one rate-limiter token freed per query instead of two). Remaining
+      ~12.5s is the bucket-refill floor itself
+      (`requests_per_second=0.08`), not something this fix touches --
+      lowering it further means raising the rate limit or removing the
+      remaining Generate_Knowledge call's dependency on it, both
+      out of scope here.
 
 ## Unscheduled
 

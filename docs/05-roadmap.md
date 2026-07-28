@@ -324,6 +324,15 @@ landed in commit `5e12446`.)
       after the fix -- zero regressions, the previously-hedging
       "how many variables" answer is now clean, no more 413s anywhere
       including the numeric-widened path that originally triggered one.
+      **Follow-up finding, 2026-07-28:** on a real 117-page book (this
+      project's actual target document type, average page ~2,570 chars),
+      the 1,500-char cap gets hit on effectively every page, so parent
+      expansion falls back to the matched chunk alone most of the time --
+      the safety fix holds (confirmed no 413 on this document either),
+      but the feature's real-world benefit on this document type is
+      currently close to zero. Needs a decision (raise the cap and
+      re-validate against 413 risk, or accept the tradeoff), not yet
+      made. See `docs/reports/2026-07-28-history-book-e2e-test.md` §4.
 
 ## v0.4.0 — Multi-user & production hardening
 

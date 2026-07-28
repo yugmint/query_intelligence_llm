@@ -751,6 +751,29 @@ Intelligence" as customer-facing phases, but are real, shipped work.
       algorithm itself; building a new chunker without that evidence
       would have been solving the wrong problem.
 
+## v0.6.0 — Token efficiency (planned)
+
+Next major focus after v0.5.0 shipped in full. Every fix this session
+(rate limiter tuning, intent-classifier LLM-call removal, the
+escalation retry's bounded RPD spend) has been working around the same
+constraint: Groq's free-tier token/request ceilings. Caching is the
+next lever -- avoid spending tokens on a call at all, rather than just
+using the ones we do spend more carefully.
+
+- [ ] **Query/response cache** — skip the LLM call entirely (both
+      retrieval-adjacent and generation) for a repeated or
+      near-duplicate question against the same index. Real questions
+      to resolve when this gets built, not decided yet: exact-match
+      only vs. embedding-similarity match (semantic cache needs its
+      own similarity threshold, which is itself an accuracy/reuse
+      tradeoff); scope (per-session vs. global -- global reuses more
+      but risks leaking one user's phrasing/context into another's
+      answer); invalidation on re-ingest (a cached answer for an index
+      that's since changed is a correctness bug, not just a staleness
+      one -- ties into `ingestion_fixed`'s existing `/reload`
+      notification, which already tells `RAG_Project_1` when an index
+      changed underneath it).
+
 ## Unscheduled
 
 - [x] **CI (GitHub Actions) — added 2026-07-26.**

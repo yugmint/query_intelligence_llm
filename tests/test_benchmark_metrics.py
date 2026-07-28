@@ -34,6 +34,15 @@ def test_is_relevant_no_expected_source_matches_any_source():
     assert _is_relevant(doc, None, 5) is True
 
 
+def test_is_relevant_list_of_pages_is_any_match():
+    # A question can legitimately draw from more than one source page
+    # (comparisons spanning two concepts) -- same any-match convention
+    # as expected_answer_substring accepting a list.
+    doc = _doc("a.pdf", 7)
+    assert _is_relevant(doc, "a.pdf", [7, 12]) is True
+    assert _is_relevant(doc, "a.pdf", [12, 19]) is False
+
+
 class _FakeVectorStore:
     def __init__(self, documents):
         self._documents = documents

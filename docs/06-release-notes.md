@@ -6,6 +6,18 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.6.2] — 2026-07-28
+
+**Added:**
+- Real retrieval-metrics ground truth for 44 more benchmark cases
+  (was 3). `expected_page` now accepts a list (any-match) for
+  questions that legitimately span two source pages. 1 new test.
+
+**Result:** raw dense-retrieval Hit@1 is 52% overall (L1: 74%, L2:
+35%) -- a real, previously-unmeasured number, lower than the 67%
+figure the 3-case sample implied. Measured pre-rerank/pre-hybrid-fusion;
+see `docs/05-roadmap.md` for the caveat and suggested next step.
+
 ## [0.6.1] — 2026-07-28
 
 **Added:**

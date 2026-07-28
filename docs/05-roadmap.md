@@ -822,6 +822,39 @@ using the ones we do spend more carefully.
       cost $0.00027 (~3.4x, correctly reflecting both calls' combined
       cost even on a run where the escalation attempt also refused).
 
+- [x] **Retrieval-metrics ground truth expanded to 44 cases — shipped
+      2026-07-28.** Prompted by the same external feedback as the
+      cost-tracking item above: "evaluate retrieval independently...
+      a bad answer with poor retrieval is a retrieval problem." Before
+      this, Hit@1/Hit@3/Recall@5/MRR/Precision@5 were only measurable
+      on 3 Manual Spot-Check cases -- statistically meaningless. Hand-
+      verified real source pages against the extracted PDF text for
+      all 24 L1-Exact Fact, 20 L2-Multi-hop, and 5 L5-Synonyms cases
+      (44 of 49; one L1 case is a deliberate refusal test with no page
+      to verify). Extended `expected_page` to accept a list (any-match,
+      same convention `expected_answer_substring` already uses) for
+      L2's comparison/explanation questions, which legitimately draw
+      from two source pages, not one -- forcing a single "the" page
+      would have misgraded genuinely-correct retrieval. 1 new test for
+      the list-match path.
+      **Spot-checked 5 cases directly against the real v3 index** before
+      trusting the aggregate -- all matched real retrieval behavior, not
+      just the hand-research.
+      **Real result, not previously known:** raw dense-retrieval Hit@1
+      is **52%** overall on the 44 cases (L1: 74%, L2: 35%, L5-Synonyms:
+      40% -- small n, noisy) -- materially lower than the 67% figure the
+      3-case sample implied, and a genuinely new finding: retrieval
+      precision is weaker than the 85% generation-accuracy number alone
+      would suggest. Caveat worth keeping in mind: this measures raw
+      `vectorstore.similarity_search` at k=15, **before** the real
+      pipeline's hybrid (BM25) fusion and reranking -- the actual
+      context handed to generation is very likely better-ordered than
+      this number shows, which is itself evidence for why generation
+      accuracy holds up despite this lower raw figure. A dedicated
+      post-rerank retrieval metric (reusing `nodes/rerank.py`'s own
+      output) is the natural next step if this gap needs closing rather
+      than just measuring.
+
 ## Unscheduled
 
 - [x] **CI (GitHub Actions) — added 2026-07-26.**

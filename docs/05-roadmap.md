@@ -796,6 +796,31 @@ using the ones we do spend more carefully.
       history-book index -- first call 14.51s (real LLM round trip),
       second call **0.0s**, identical correct answer, zero LLM calls
       spent on the repeat.
+- [x] **Real cost-per-query tracking — shipped and validated
+      2026-07-28.** Prompted by external feedback on the benchmark
+      report (`ingestion_fixed/tests/local/data/books/history - feedback
+      02 and action plan.docx`): "for stakeholders I'd report... cost
+      per query." `src/utils/pricing.py`: real Groq per-token pricing
+      (checked 2026-07-28) for both models this project calls;
+      `estimate_cost_usd()` returns `None` (not a silent `$0.00`) for an
+      unpriced model. `nodes/generate_knowledge.py` reads
+      `response.usage_metadata`/`response_metadata["model_name"]` (the
+      real shape returned by `ChatGroq`, inspected live before coding
+      against it, not assumed) off *every* LLM call including the
+      escalation retry, so a query that escalates correctly costs more
+      than one that doesn't. New `metadata["cost_usd"]` on every
+      `ask()` result, `rag_query_cost_usd_total` Prometheus counter,
+      and a "Mean cost/query" line in `scripts/benchmark.py`'s report.
+      **Real bug caught before shipping:** the first draft accessed
+      `response.response_metadata` directly, which crashes on the
+      existing `FakeLLM` test double (a bare `SimpleNamespace` without
+      that attribute) -- every existing generate_knowledge test would
+      have broken. Fixed to `getattr(..., None) or {}`, same defensive
+      pattern already used for `usage_metadata`. 7 new tests.
+      **Validated against real Groq calls:** a plain query cost
+      $0.00008; a comparative query that triggered the escalation retry
+      cost $0.00027 (~3.4x, correctly reflecting both calls' combined
+      cost even on a run where the escalation attempt also refused).
 
 ## Unscheduled
 

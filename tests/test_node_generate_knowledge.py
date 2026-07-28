@@ -2,6 +2,8 @@
 Tests for nodes/generate_knowledge.py::generate_knowledge_response.
 """
 
+from types import SimpleNamespace
+
 from tests.conftest import FakeLLM, make_resources
 
 from src.workflow.nodes.generate_knowledge import generate_knowledge_response
@@ -15,6 +17,32 @@ def _state(**overrides):
     }
     state.update(overrides)
     return state
+
+
+class FakePricedLLM:
+    """
+    Stand-in for resources.llm that returns real usage_metadata/
+    response_metadata shape (see the real ChatGroq response inspected
+    live in this session) -- FakeLLM's plain SimpleNamespace(content=...)
+    doesn't have these, which is fine for every other node test (cost
+    defaults to 0.0), but this file needs the real shape to test cost
+    computation itself.
+    """
+
+    def __init__(self, content, model_name, input_tokens, output_tokens):
+        self._content = content
+        self._model_name = model_name
+        self._input_tokens = input_tokens
+        self._output_tokens = output_tokens
+        self.call_count = 0
+
+    def invoke(self, prompt: str):
+        self.call_count += 1
+        return SimpleNamespace(
+            content=self._content,
+            usage_metadata={"input_tokens": self._input_tokens, "output_tokens": self._output_tokens},
+            response_metadata={"model_name": self._model_name},
+        )
 
 
 def test_valid_json_response_extracts_answer():
@@ -122,3 +150,34 @@ def test_confident_answer_never_triggers_escalation():
 
     assert result["answer"] == "X is described on page 5."
     assert escalation_llm.call_count == 0
+
+
+def test_cost_computed_from_real_usage_metadata_shape():
+    llm = FakePricedLLM(
+        '{"response": "ok"}', "llama-3.1-8b-instant", input_tokens=1_000_000, output_tokens=1_000_000
+    )
+
+    result = generate_knowledge_response(_state(), make_resources(llm=llm))
+
+    assert result["metadata"]["cost_usd"] == 0.05 + 0.08
+
+
+def test_cost_accumulates_escalation_call_even_when_it_also_refuses():
+    llm = FakePricedLLM("I don't know.", "llama-3.1-8b-instant", input_tokens=1_000_000, output_tokens=0)
+    escalation_llm = FakePricedLLM(
+        "I don't know.", "openai/gpt-oss-20b", input_tokens=1_000_000, output_tokens=0
+    )
+
+    result = generate_knowledge_response(
+        _state(), make_resources(llm=llm, escalation_llm=escalation_llm)
+    )
+
+    assert result["metadata"]["cost_usd"] == 0.05 + 0.075
+
+
+def test_llm_without_usage_metadata_defaults_cost_to_zero():
+    llm = FakeLLM('{"response": "ok"}')
+
+    result = generate_knowledge_response(_state(), make_resources(llm=llm))
+
+    assert result["metadata"]["cost_usd"] == 0.0

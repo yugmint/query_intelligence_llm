@@ -6,6 +6,24 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.6.1] — 2026-07-28
+
+**Added:**
+- Real cost-per-query tracking. `src/utils/pricing.py` (real Groq
+  pricing, both models this project calls); `nodes/generate_knowledge.py`
+  reads real token usage off every LLM call (primary + escalation) and
+  computes USD cost. New `metadata["cost_usd"]`,
+  `rag_query_cost_usd_total` counter, "Mean cost/query" in the
+  benchmark report.
+
+**Fixed:**
+- Caught before shipping: direct `response.response_metadata` access
+  would have crashed on the existing `FakeLLM` test double. Fixed to a
+  defensive `getattr`, matching the existing `usage_metadata` pattern.
+
+**Validated:** real Groq calls -- plain query $0.00008, a query that
+triggered escalation $0.00027. 7 new tests.
+
 ## [0.6.0] — 2026-07-28
 
 **Added:**

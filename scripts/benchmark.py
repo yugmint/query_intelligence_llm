@@ -531,6 +531,7 @@ def generation_metrics(rag_service, case):
         "potential_hallucination": potential_hallucination,
         "citation_correct": citation_correct,
         "latency": latency,
+        "cost_usd": state.get("metadata", {}).get("cost_usd", 0.0),
     }
 
 
@@ -627,6 +628,8 @@ def main():
         judgeable = sum(1 for g in gen if g['citation_correct'] is not None)
         print(f"Citation accuracy:        {_pct([g['citation_correct'] for g in gen]):.0f}%  (of {judgeable} judgeable)")
         print(f"Mean latency:             {_mean([g['latency'] for g in gen]):.2f}s  (target from the benchmark doc: <2s)")
+        total_cost = sum(g["cost_usd"] for g in gen)
+        print(f"Mean cost/query:          ${_mean([g['cost_usd'] for g in gen]):.6f}  (total for this level: ${total_cost:.4f})")
         if ret:
             print(f"Retrieval Hit@1:          {_pct([r['hit@1'] for r in ret]):.0f}%  (of {len(ret)} judgeable)")
             print(f"Retrieval Hit@3:          {_pct([r['hit@3'] for r in ret]):.0f}%")

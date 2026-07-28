@@ -64,6 +64,14 @@ RESPONSE_CACHE_HITS_TOTAL = Counter(
     "Response cache hits -- each one is a full workflow invocation skipped.",
 )
 
+# Real $ cost per query (src/utils/pricing.py) -- omitted (not
+# incremented by 0.0) for a response from an unpriced model, so a gap
+# here reads as "unknown," not "free."
+QUERY_COST_USD_TOTAL = Counter(
+    "rag_query_cost_usd_total",
+    "Cumulative estimated USD spend on LLM calls (primary + escalation).",
+)
+
 
 def outcome_for_state(state: dict) -> str:
     """

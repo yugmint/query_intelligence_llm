@@ -761,3 +761,24 @@ Intelligence" as customer-facing phases, but are real, shipped work.
 - [ ] Agentic Intelligence (README Phase 5) — multi-agent, tool calling,
       web search. Deliberately not scheduled into a version yet; too far
       out to commit to a shape.
+- [ ] **Comparative questions ("which X had more/better Y") get refused
+      even when the answer is directly in context — investigated
+      2026-07-28, not fixed, real negative evidence recorded.** Traced
+      to `src/prompts/generation.py`'s "base your answer on that
+      sentence alone" guideline as the likely cause -- tested two
+      prompt variants explicitly permitting cross-sentence synthesis
+      for comparison questions, the second one explicitly telling the
+      model "if only one side is discussed, that's the implied answer."
+      **Neither changed the output at all**, even with the full,
+      unambiguous Harappan drainage-system passage sitting directly in
+      context (confirmed by inspecting the actual `state["context"]`
+      passed to the LLM, not assumed) -- ruled out prompt wording as
+      the lever and reverted both (dead-weight complexity with no
+      measured effect isn't worth keeping). Current best explanation:
+      a real capability ceiling of `llama-3.1-8b-instant` (the free-tier
+      model this project runs on) on implicit comparative reasoning,
+      not a retrieval, chunking, or prompt-clarity problem. A real fix
+      would likely need either a stronger model for this call, or a
+      dedicated comparison strategy (separately retrieve/summarize each
+      side of the comparison, then generate over the summaries) --
+      both bigger, separately-scoped changes, not a quick follow-up.

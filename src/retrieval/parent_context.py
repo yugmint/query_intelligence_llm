@@ -4,74 +4,94 @@
 Parent-child retrieval: the small chunks reranking picked are what
 matched the query precisely, but a small chunk alone can cut off
 context the generator needs (a sentence started on the previous chunk,
-a table row's header two chunks up). The "parent" here is simply the
-full page the chunk came from -- ingestion already tags every PDF
-chunk with page_number/source (src/utils/metadata in ingestion_fixed),
-so no separate parent-document store is needed; the vectorstore
-already holds every chunk from that page.
+a table row's header two chunks up).
+
+v1 (2026-07-28) expanded to the chunk's *full page*. A real E2E test on
+a real target-type book found that neutered the feature in practice:
+book pages run denser than PARENT_CONTEXT_MAX_CHARS_PER_PAGE, so most
+pages fell back to the matched chunk alone anyway (see
+docs/05-roadmap.md v0.3.0 "Retrieval Context Strategy" follow-up).
+
+v2 (this version) expands to the chunk's *neighbors by chunk_id*
+instead -- `chunk_id` is a simple sequential index assigned once per
+document at ingestion time (`MetadataGenerator`), so it's a reliable
+reading-order key regardless of how much text a given page happens to
+hold. Bounded by chunk *count* (PARENT_CONTEXT_NEIGHBOR_CHUNKS on each
+side), not page size, so the context budget no longer depends on
+document density -- the actual reason v1's cap kept firing.
 
 Only expands `context` (what generation reads); `documents`/citations
 stay scoped to the actual matched chunks -- a citation should point at
-what was matched, not claim the whole page was "the source".
+what was matched, not claim neighboring chunks were "the source".
 """
 
 from langchain_core.documents import Document
 
-from src.retrieval.config import PARENT_CONTEXT_MAX_CHARS_PER_PAGE
+from src.retrieval.config import PARENT_CONTEXT_NEIGHBOR_CHUNKS
 
 
 def expand_to_parent_context(documents: list[Document], vectorstore) -> str:
     """
-    Builds the generation context by expanding each document to its
-    full parent page's text (same source + page_number), deduped so two
-    selected chunks from the same page don't repeat that page twice.
-    Falls back to the chunk's own text when there's no page_number
-    (non-paginated formats: .txt/.html/.docx), no vectorstore, or the
-    page is too large to expand safely (see below).
+    Builds the generation context by expanding each matched chunk to
+    itself plus its PARENT_CONTEXT_NEIGHBOR_CHUNKS nearest neighbors (by
+    chunk_id, same source) on each side. Overlapping neighbor windows
+    across different matched chunks are deduped -- each chunk_id
+    contributes its text at most once. Chunks without a chunk_id
+    (non-PDF loaders don't currently set one) or with no vectorstore
+    fall back to their own text unchanged.
     """
 
     if vectorstore is None:
         return "\n\n".join(document.page_content for document in documents)
 
-    # ponytail: O(top_k * corpus_size) scan, fine at this project's
-    # corpus sizes (hundreds of chunks). Upgrade: a (source, page) ->
-    # chunks index built once in BM25Factory-style resource setup if a
-    # much larger corpus ever makes this measurably slow.
-    all_documents = list(vectorstore.docstore._dict.values())
+    # ponytail: O(corpus_size) scan to build the index, once per call --
+    # fine at this project's corpus sizes (hundreds of chunks). Upgrade:
+    # cache this on RAGResources, rebuilt in reload_index() alongside
+    # bm25_retriever, if a much larger corpus makes this measurably slow.
+    by_source: dict[str, dict[int, Document]] = {}
+    for doc in vectorstore.docstore._dict.values():
+        source = doc.metadata.get("source")
+        chunk_id = doc.metadata.get("chunk_id")
+        if source is None or chunk_id is None:
+            continue
+        by_source.setdefault(source, {})[chunk_id] = doc
 
-    parts = []
-    seen_pages = set()
+    included: dict[str, set[int]] = {}
+    fallback_parts = []
 
     for document in documents:
         source = document.metadata.get("source")
-        page = document.metadata.get("page_number")
+        chunk_id = document.metadata.get("chunk_id")
 
-        if page is None:
-            parts.append(document.page_content)
+        if chunk_id is None or source not in by_source:
+            fallback_parts.append(document.page_content)
             continue
 
-        key = (source, page)
-        if key in seen_pages:
-            continue
-        seen_pages.add(key)
+        window = range(
+            chunk_id - PARENT_CONTEXT_NEIGHBOR_CHUNKS,
+            chunk_id + PARENT_CONTEXT_NEIGHBOR_CHUNKS + 1,
+        )
+        included.setdefault(source, set()).update(
+            i for i in window if i in by_source[source]
+        )
 
-        page_chunks = [
-            d.page_content
-            for d in all_documents
-            if d.metadata.get("source") == source and d.metadata.get("page_number") == page
-        ]
-        full_page = "\n".join(page_chunks) if page_chunks else document.page_content
+    parts = []
+    for source, chunk_ids in included.items():
+        chunk_map = by_source[source]
+        ordered_ids = sorted(chunk_ids)
 
-        # A page over budget can't be truncated blindly -- the matched
-        # chunk (the actual reason this page was pulled in) could sit
-        # anywhere in it, and slicing from the start risks cutting the
-        # relevant part out of its own expanded context. Fall back to
-        # just the matched chunk instead of a possibly-broken slice; a
-        # real 413 from Groq (TOP_K_NUMERIC=8 chunks each expanding to a
-        # full dense page) confirmed this budget matters in practice.
-        if len(full_page) > PARENT_CONTEXT_MAX_CHARS_PER_PAGE:
-            parts.append(document.page_content)
-        else:
-            parts.append(full_page)
+        # Group into contiguous runs so a real gap (two matched chunks
+        # far apart in the same document) reads as a paragraph break,
+        # not glued-together text that looks falsely continuous.
+        run: list[int] = []
+        for chunk_id in ordered_ids:
+            if run and chunk_id != run[-1] + 1:
+                parts.append("\n".join(chunk_map[i].page_content for i in run))
+                run = []
+            run.append(chunk_id)
+        if run:
+            parts.append("\n".join(chunk_map[i].page_content for i in run))
+
+    parts.extend(fallback_parts)
 
     return "\n\n".join(parts)

@@ -6,6 +6,24 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.5.9] — 2026-07-28
+
+**Changed:**
+- Parent-child retrieval redesigned: replaced full-parent-page
+  expansion with expansion by `chunk_id` neighbors
+  (`PARENT_CONTEXT_NEIGHBOR_CHUNKS`, default 1 each side). The v1
+  page-based approach was found to provide near-zero benefit on real
+  book-length documents (dense pages exceeded its size cap almost
+  every time -- see `docs/05-roadmap.md` v0.3.0). Bounded by chunk
+  count instead of page size, so it's no longer at risk of the 413
+  that motivated the old cap in the first place. 7 rewritten tests.
+
+**Validated:** re-tested against the same real 117-page book --
+expansion genuinely active again (1,418 → 4,581 chars on a real query,
+vs. zero growth under v1); numeric-widened path (the original 413
+trigger) still clean; zero regressions on the same 5-question set from
+the earlier E2E report.
+
 ## [0.5.8] — 2026-07-28
 
 **Added:**

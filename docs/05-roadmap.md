@@ -327,12 +327,30 @@ landed in commit `5e12446`.)
       **Follow-up finding, 2026-07-28:** on a real 117-page book (this
       project's actual target document type, average page ~2,570 chars),
       the 1,500-char cap gets hit on effectively every page, so parent
-      expansion falls back to the matched chunk alone most of the time --
-      the safety fix holds (confirmed no 413 on this document either),
-      but the feature's real-world benefit on this document type is
-      currently close to zero. Needs a decision (raise the cap and
-      re-validate against 413 risk, or accept the tradeoff), not yet
-      made. See `docs/reports/2026-07-28-history-book-e2e-test.md` §4.
+      expansion fell back to the matched chunk alone most of the time --
+      the safety fix held (confirmed no 413 on this document either), but
+      the feature's real-world benefit on this document type was close
+      to zero. See `docs/reports/2026-07-28-history-book-e2e-test.md` §4.
+      **Redesigned same day (v2), not just re-tuned:** replaced full-page
+      expansion with expansion by **`chunk_id` neighbors**
+      (`PARENT_CONTEXT_NEIGHBOR_CHUNKS`, default 1 on each side) --
+      `chunk_id` is a simple sequential index `MetadataGenerator` already
+      assigns per document, so it's a reliable reading-order key
+      regardless of page density. Bounded by chunk *count*, not page
+      *size*: worst case at `TOP_K_NUMERIC=8` wholly-distinct matches is
+      24 chunks (~500 chars each), comfortably under the 6000 TPM ceiling
+      that caused the original 413 -- the page-size cap no longer exists
+      because the new mechanism was never at risk of it in the first
+      place. Overlapping neighbor windows across different matched
+      chunks are deduped; non-contiguous matches render as separate
+      paragraphs rather than falsely-continuous glued text. 7 rewritten
+      unit tests. **Re-validated against the same real book:** expansion
+      now genuinely active again (1,418 → 4,581 chars on a real query,
+      vs. zero growth under v1's cap); numeric-widened path (the
+      original 413 trigger) still clean, no regressions across the same
+      5-question regression set from the E2E report -- answers if
+      anything more complete (the Mahajanapadas answer now includes full
+      sub-bullet detail that wasn't reachable before).
 
 ## v0.4.0 — Multi-user & production hardening
 

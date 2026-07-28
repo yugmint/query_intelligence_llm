@@ -123,8 +123,8 @@ def rerank_documents(
     selected = _select_diverse_top_k(ranked, top_k)
     top_documents = [document for _score, document in selected]
 
-    # Parent-child retrieval: generation reads each chunk's full parent
-    # page instead of just the matched chunk -- see
+    # Parent-child retrieval: generation reads each chunk plus its
+    # chunk_id neighbors instead of just the matched chunk alone -- see
     # src/retrieval/parent_context.py. documents/citations below still
     # reflect the actual matched (small) chunks, unchanged.
     context = expand_to_parent_context(top_documents, resources.vectorstore)

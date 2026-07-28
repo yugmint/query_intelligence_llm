@@ -2,9 +2,11 @@
 Tests for src/retrieval/parent_context.py::expand_to_parent_context.
 """
 
+from types import SimpleNamespace
+
 from langchain_core.documents import Document
 
-from src.retrieval.config import PARENT_CONTEXT_MAX_CHARS_PER_PAGE
+from src.retrieval.config import PARENT_CONTEXT_NEIGHBOR_CHUNKS
 from src.retrieval.parent_context import expand_to_parent_context
 
 
@@ -12,15 +14,18 @@ class _FakeDocstoreVectorStore:
     """Stand-in exposing .docstore._dict, the only thing this module reads."""
 
     def __init__(self, documents):
-        from types import SimpleNamespace
         self.docstore = SimpleNamespace(_dict={str(i): d for i, d in enumerate(documents)})
 
 
-def _doc(content, source="a.pdf", page=None):
+def _doc(content, source="a.pdf", chunk_id=None):
     metadata = {"source": source}
-    if page is not None:
-        metadata["page_number"] = page
+    if chunk_id is not None:
+        metadata["chunk_id"] = chunk_id
     return Document(page_content=content, metadata=metadata)
+
+
+def _corpus(*contents, source="a.pdf"):
+    return [_doc(c, source=source, chunk_id=i) for i, c in enumerate(contents)]
 
 
 def test_no_vectorstore_falls_back_to_raw_join():
@@ -31,78 +36,75 @@ def test_no_vectorstore_falls_back_to_raw_join():
     assert result == "chunk one\n\nchunk two"
 
 
-def test_expands_to_full_page_text():
-    corpus = [
-        _doc("First part of page 1.", page=1),
-        _doc("Second part of page 1.", page=1),
-        _doc("Only part of page 2.", page=2),
-    ]
+def test_expands_to_neighbors_by_chunk_id():
+    corpus = _corpus("before.", "MATCHED.", "after.")
     vectorstore = _FakeDocstoreVectorStore(corpus)
-    matched = [corpus[0]]  # only the first chunk was actually retrieved/reranked
+    matched = [corpus[1]]  # chunk_id 1, neighbors at 0 and 2 (default window=1)
 
     result = expand_to_parent_context(matched, vectorstore)
 
-    assert "First part of page 1." in result
-    assert "Second part of page 1." in result  # pulled in as the parent
+    assert "before." in result
+    assert "MATCHED." in result
+    assert "after." in result
 
 
-def test_two_matched_chunks_from_same_page_not_duplicated():
-    corpus = [
-        _doc("Part A.", page=1),
-        _doc("Part B.", page=1),
-    ]
+def test_neighbor_window_does_not_cross_source_boundary():
+    doc_a = _doc("last chunk of doc A.", source="a.pdf", chunk_id=5)
+    doc_b_before = _doc("would-be neighbor in doc B.", source="b.pdf", chunk_id=4)
+    vectorstore = _FakeDocstoreVectorStore([doc_a, doc_b_before])
+
+    result = expand_to_parent_context([doc_a], vectorstore)
+
+    assert "last chunk of doc A." in result
+    assert "would-be neighbor in doc B." not in result
+
+
+def test_overlapping_windows_from_two_matches_not_duplicated():
+    corpus = _corpus("c0.", "c1.", "c2.", "c3.", "c4.")
     vectorstore = _FakeDocstoreVectorStore(corpus)
-    matched = [corpus[0], corpus[1]]  # both chunks from the same page
+    # chunk_id 1 and chunk_id 3 both matched -- their window=1 neighbors
+    # overlap at chunk_id 2.
+    matched = [corpus[1], corpus[3]]
 
     result = expand_to_parent_context(matched, vectorstore)
 
-    assert result.count("Part A.") == 1
-    assert result.count("Part B.") == 1
+    assert result.count("c2.") == 1
+    for expected in ["c0.", "c1.", "c2.", "c3.", "c4."]:
+        assert expected in result
 
 
-def test_chunks_without_page_number_use_own_content():
-    corpus = [_doc("standalone text, no page concept")]
+def test_non_contiguous_matches_produce_separate_paragraphs():
+    corpus = _corpus(*[f"c{i}." for i in range(10)])
     vectorstore = _FakeDocstoreVectorStore(corpus)
-
-    result = expand_to_parent_context(corpus, vectorstore)
-
-    assert result == "standalone text, no page concept"
-
-
-def test_different_sources_same_page_number_not_mixed():
-    corpus = [
-        _doc("Doc A page 1 content.", source="a.pdf", page=1),
-        _doc("Doc B page 1 content.", source="b.pdf", page=1),
-    ]
-    vectorstore = _FakeDocstoreVectorStore(corpus)
-    matched = [corpus[0]]
+    # chunk_id 1 and chunk_id 8 are far apart -- their windows don't touch.
+    matched = [corpus[1], corpus[8]]
 
     result = expand_to_parent_context(matched, vectorstore)
 
-    assert "Doc A page 1" in result
-    assert "Doc B page 1" not in result
+    parts = result.split("\n\n")
+    assert len(parts) == 2
+    assert "c0." in parts[0] and "c1." in parts[0] and "c2." in parts[0]
+    assert "c7." in parts[1] and "c8." in parts[1] and "c9." in parts[1]
 
 
-def test_oversized_page_falls_back_to_matched_chunk_only():
-    # Regression guard for a real Groq 413 (TOP_K_NUMERIC=8 chunks each
-    # expanding to a full dense page blew past the 6000 TPM ceiling).
-    # A page over budget must fall back to the matched chunk, not an
-    # arbitrary truncated slice that could cut out the relevant part.
-    matched_chunk = _doc("the actually relevant matched sentence.", page=1)
-    huge_neighbor = _doc("x" * (PARENT_CONTEXT_MAX_CHARS_PER_PAGE + 1), page=1)
-    vectorstore = _FakeDocstoreVectorStore([matched_chunk, huge_neighbor])
+def test_chunks_without_chunk_id_use_own_content():
+    doc = _doc("standalone text, no chunk_id")
+    vectorstore = _FakeDocstoreVectorStore([doc])
 
-    result = expand_to_parent_context([matched_chunk], vectorstore)
+    result = expand_to_parent_context([doc], vectorstore)
 
-    assert result == "the actually relevant matched sentence."
+    assert result == "standalone text, no chunk_id"
 
 
-def test_page_within_budget_still_expands():
-    small_chunk = _doc("part one.", page=1)
-    small_neighbor = _doc("part two.", page=1)
-    vectorstore = _FakeDocstoreVectorStore([small_chunk, small_neighbor])
+def test_window_size_is_configurable_and_bounded():
+    # Regression guard for the real 413 that motivated bounding by
+    # count: a wide-ranging match set should never pull in the whole
+    # corpus, only PARENT_CONTEXT_NEIGHBOR_CHUNKS on each side.
+    corpus = _corpus(*[f"c{i}." for i in range(50)])
+    vectorstore = _FakeDocstoreVectorStore(corpus)
+    matched = [corpus[25]]
 
-    result = expand_to_parent_context([small_chunk], vectorstore)
+    result = expand_to_parent_context(matched, vectorstore)
 
-    assert "part one." in result
-    assert "part two." in result
+    expected_count = 2 * PARENT_CONTEXT_NEIGHBOR_CHUNKS + 1
+    assert sum(result.count(f"c{i}.") for i in range(50)) == expected_count

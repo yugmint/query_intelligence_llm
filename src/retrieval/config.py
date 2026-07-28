@@ -58,15 +58,18 @@ CHUNK_DEDUP_SIMILARITY_THRESHOLD = float(os.getenv("CHUNK_DEDUP_SIMILARITY_THRES
 # tuned specifically for this project.
 RRF_K = int(os.getenv("RRF_K", "60"))
 
-# Cap on each expanded parent page's contribution to generation context
-# (src/retrieval/parent_context.py) -- found necessary by a real 413
-# from Groq ("Requested 7735" vs the 6000 TPM hard ceiling, see
-# src/retrieval/llm.py) when TOP_K_NUMERIC=8 chunks each expanded to a
-# full dense page. A page over this falls back to just the matched
-# chunk rather than an arbitrary truncated slice -- see
-# parent_context.py for why blind truncation isn't safe here.
-PARENT_CONTEXT_MAX_CHARS_PER_PAGE = int(
-    os.getenv("PARENT_CONTEXT_MAX_CHARS_PER_PAGE", "1500")
+# How many neighboring chunks (by chunk_id, each side) parent-child
+# retrieval pulls in around each matched chunk (src/retrieval/
+# parent_context.py). v1 expanded to the whole parent *page* instead;
+# found on a real book that most pages exceed a size cap and the whole
+# mechanism fell back to "matched chunk only" almost every time (dense
+# pages, not sparse ones, are exactly what this needs to help on). Count-
+# bounded instead of size-bounded: worst case at TOP_K_NUMERIC=8 wholly-
+# distinct matches is 8*(2*1+1)=24 chunks (~500 chars each) -- comfortably
+# under the 6000 TPM ceiling that caused a real Groq 413 with v1's
+# unbounded-by-density page expansion.
+PARENT_CONTEXT_NEIGHBOR_CHUNKS = int(
+    os.getenv("PARENT_CONTEXT_NEIGHBOR_CHUNKS", "1")
 )
 
 pdf_path = "data\Grandma's Bag of Stories by Sudha Murthy.pdf"  ## Paste your pdf path here

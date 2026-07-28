@@ -491,6 +491,36 @@ Intelligence" as customer-facing phases, but are real, shipped work.
       a real number worth tracking going forward: mean latency 25.1s/
       question -- confirms per-node observability's earlier finding
       (Intent + Generate_Knowledge dominate) at the end-to-end level.
+      **Extended same day with a graded subset of an external benchmark
+      spec** ("Benchmark document for the history book.docx," ~115
+      questions across 7 difficulty levels): only Level 5 "Synonyms"
+      (5 questions) and Level 6 "Failure Tests" (10 questions) state
+      expected answers/behavior in that document, so only those are
+      graded here -- Levels 1-4 and the rest of Level 5 give question
+      text only, and grading those needs the same real hand-
+      verification-against-the-source-PDF already done for every other
+      case in this file, not invented from the question alone; left as
+      a separate task. Added `expected_answer_substring` as a list
+      (any-match) and `expect_refusal` (success = the system hedged,
+      the opposite polarity from every other case -- for Level 6) to
+      the case schema, plus a broadened refusal-phrase list (the
+      original single "i don't know" literal was too narrow for how
+      variably a real hedge gets phrased) and per-level report
+      breakdown. 8 more unit tests.
+      **Real run, all 22 cases:** L5 100% (after fixing a grading bug
+      this run itself caught -- "harappan" alone false-negatived a
+      correct "Indus Valley Civilization" answer, the source's other
+      name for the same entity; added as a second accepted keyword),
+      L6 90%. The one real L6 miss, checked against the actual source
+      text, is a genuine if narrow finding, not a grading artifact: the
+      source explicitly frames the Harappan decline as
+      "multi-causal" (climate change is one example among several), but
+      the model's answer presented one of those factors (climate/river
+      change) as if it were the complete explanation, dropping the
+      source's own "multiple factors, no single definitive cause"
+      framing. The facts stated were grounded (not a hallucination),
+      but the appropriate epistemic hedging the source itself uses was
+      lost -- a real, narrow prompt-quality gap, not fixed here.
 
 ## v0.5.0 — Enterprise features (README Phase 4)
 

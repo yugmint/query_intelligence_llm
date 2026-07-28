@@ -10,7 +10,7 @@ import math
 import pytest
 from langchain_core.documents import Document
 
-from scripts.benchmark import _is_relevant, _mean, _pct, retrieval_metrics
+from scripts.benchmark import _is_refusal, _is_relevant, _mean, _pct, retrieval_metrics
 
 
 def _doc(source, page):
@@ -79,3 +79,29 @@ def test_pct_and_mean_ignore_none_and_handle_empty():
     assert _mean([1.0, 2.0, None]) == 1.5
     assert math.isnan(_pct([]))
     assert math.isnan(_mean([]))
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "i don't know.",
+        "this is not mentioned in the document.",
+        "the document does not specify a value here.",
+        "there is no information about this in the text.",
+        "i am unable to determine the exact figure.",
+    ],
+)
+def test_is_refusal_detects_hedge_phrases(answer):
+    assert _is_refusal(answer) is True
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "the sample size was 40 patients.",
+        "cattell documented the scree graph in 1966.",
+        "the mauryan empire first unified much of india.",
+    ],
+)
+def test_is_refusal_false_for_confident_answers(answer):
+    assert _is_refusal(answer) is False

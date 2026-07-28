@@ -18,11 +18,23 @@ Two kinds of thing measured per question:
   it's deliberately not implemented here.
 
   End-to-end answer quality (real RAGService.ask() call) --
-  answer_correct (expected_answer_substring found, case-insensitive),
-  citation_correct (expected_page appears in the returned citations),
-  potential_hallucination (answer isn't "I don't know" but doesn't
-  contain the expected substring -- a heuristic proxy, not an LLM-judged
-  hallucination detector), and latency.
+  answer_correct (any of expected_answer_substring's keywords found,
+  case-insensitive -- OR, for expect_refusal=True cases, whether the
+  answer actually hedged), citation_correct (expected_page appears in
+  the returned citations, or must_cite=True is satisfied by any
+  citation at all), potential_hallucination (a confident, non-hedged
+  answer that doesn't match -- a heuristic proxy via a phrase list,
+  not an LLM-judged hallucination detector), and latency.
+
+Also includes a graded subset of "Benchmark document for the history
+book.docx" (an external benchmark spec, ~115 questions across 7
+difficulty levels, received 2026-07-28): Level 5 "Synonyms" (5
+questions) and Level 6 "Failure Tests" (10 questions) are the only
+levels that state expected answers/behavior in that document, so
+they're the only ones graded here. Levels 1-4 and the rest of Level 5
+give question text only -- grading those needs the same real
+hand-verification-against-the-source-PDF already done for every other
+case in this file, not invented from the question alone.
 
 Usage:
     python scripts/benchmark.py
@@ -39,6 +51,7 @@ CASES = [
     # Factor Analysis -- local/test_reports/factor_analysis_index
     dict(
         dataset="Factor Analysis",
+        level="Manual Spot-Check",
         index_path="local/test_reports/factor_analysis_index",
         question="Who documented the scree graph?",
         expected_answer_substring="cattell",
@@ -47,6 +60,7 @@ CASES = [
     ),
     dict(
         dataset="Factor Analysis",
+        level="Manual Spot-Check",
         index_path="local/test_reports/factor_analysis_index",
         question="In Example 1, how many factors were retained, and what rotation was used?",
         expected_answer_substring="varimax",
@@ -56,6 +70,7 @@ CASES = [
     # EfficientNet -- local/test_reports/efficientnet_index
     dict(
         dataset="EfficientNet",
+        level="Manual Spot-Check",
         index_path="local/test_reports/efficientnet_index",
         question="Where is the EfficientNet source code available?",
         expected_answer_substring="github.com/tensorflow/tpu",
@@ -64,6 +79,7 @@ CASES = [
     ),
     dict(
         dataset="EfficientNet",
+        level="Manual Spot-Check",
         index_path="local/test_reports/efficientnet_index",
         question="What accuracy does EfficientNet achieve on CIFAR-100 and Flowers in transfer learning?",
         expected_answer_substring="91.7",
@@ -73,6 +89,7 @@ CASES = [
     # Airlock (COVID-19 severity study) -- local/test_reports/airlock_index
     dict(
         dataset="Airlock",
+        level="Manual Spot-Check",
         index_path="local/test_reports/airlock_index",
         question="What was the sample size in this study?",
         expected_answer_substring="40 patients",
@@ -82,6 +99,7 @@ CASES = [
     # History book -- F:/.../ingestion_fixed/local/test_reports/history_book_index_v2
     dict(
         dataset="History Book",
+        level="Manual Spot-Check",
         index_path=r"F:\Programming\RAG Projects\ingestion_fixed\local\test_reports\history_book_index_v2",
         question="Which schools of art were connected with Mahayana Buddhism?",
         expected_answer_substring="gandhara",
@@ -90,6 +108,7 @@ CASES = [
     ),
     dict(
         dataset="History Book",
+        level="Manual Spot-Check",
         index_path=r"F:\Programming\RAG Projects\ingestion_fixed\local\test_reports\history_book_index_v2",
         question="What was the outcome of the 1971 Indo-Pak War?",
         expected_answer_substring="victory",
@@ -97,6 +116,84 @@ CASES = [
         expected_page=101,
     ),
 ]
+
+# ---------------------------------------------------------------------
+# "Benchmark document for history book.docx" -- an external benchmark
+# spec (~115 questions across 7 difficulty levels) received 2026-07-28.
+# Only the two levels that actually carry stated expected answers/
+# behavior in that document are included here as graded cases; Levels
+# 1-4 (75 questions) and most of Level 5 give only the question text,
+# no expected answer -- grading those needs the same real hand-
+# verification-against-the-source-PDF this session already did for the
+# CASES above, not invented from the question alone. Not done here;
+# a separate task if wanted.
+# ---------------------------------------------------------------------
+
+_HISTORY_INDEX = r"F:\Programming\RAG Projects\ingestion_fixed\local\test_reports\history_book_index_v2"
+
+CASES += [
+    # Level 5 -- Retrieval Robustness / Synonyms subsection. The
+    # benchmark doc states these five expected answers explicitly.
+    dict(dataset="History Book", level="L5-Synonyms", index_path=_HISTORY_INDEX,
+         question="Which civilization built excellent sewer systems?",
+         expected_answer_substring=["harappan", "indus valley"], expected_source=None, expected_page=None),
+    dict(dataset="History Book", level="L5-Synonyms", index_path=_HISTORY_INDEX,
+         question="Who promoted moral governance?",
+         expected_answer_substring="ashoka", expected_source=None, expected_page=None),
+    dict(dataset="History Book", level="L5-Synonyms", index_path=_HISTORY_INDEX,
+         question="Which empire first unified much of India?",
+         expected_answer_substring="mauryan", expected_source=None, expected_page=None),
+    dict(dataset="History Book", level="L5-Synonyms", index_path=_HISTORY_INDEX,
+         question="Which civilization used bronze extensively?",
+         # "harappan" alone false-negatived a real run: the model
+         # correctly answered "Indus Valley Civilization" -- the same
+         # entity, just the source's other name for it. Same fix would
+         # apply to any other Harappan/Indus-Valley question here.
+         expected_answer_substring=["harappan", "indus valley"],
+         expected_source=None, expected_page=None),
+    dict(dataset="History Book", level="L5-Synonyms", index_path=_HISTORY_INDEX,
+         question="Which culture worshipped Proto-Shiva?",
+         expected_answer_substring=["harappan", "indus valley"], expected_source=None, expected_page=None),
+
+    # Level 6 -- Failure Tests. The benchmark doc states these should
+    # NOT be answered confidently -- success here means a refusal/hedge,
+    # the opposite polarity from every other case (expect_refusal=True).
+    dict(dataset="History Book", level="L6-Failure Tests", index_path=_HISTORY_INDEX,
+         question="Who was the last Harappan king?",
+         expect_refusal=True, expected_source=None, expected_page=None),
+    dict(dataset="History Book", level="L6-Failure Tests", index_path=_HISTORY_INDEX,
+         question="Which language did Harappans speak?",
+         expect_refusal=True, expected_source=None, expected_page=None),
+    dict(dataset="History Book", level="L6-Failure Tests", index_path=_HISTORY_INDEX,
+         question="What was Ashoka's favorite animal?",
+         expect_refusal=True, expected_source=None, expected_page=None),
+    dict(dataset="History Book", level="L6-Failure Tests", index_path=_HISTORY_INDEX,
+         question="Give Harappan population figures.",
+         expect_refusal=True, expected_source=None, expected_page=None),
+    dict(dataset="History Book", level="L6-Failure Tests", index_path=_HISTORY_INDEX,
+         question="What currency did Harappans use?",
+         expect_refusal=True, expected_source=None, expected_page=None),
+    dict(dataset="History Book", level="L6-Failure Tests", index_path=_HISTORY_INDEX,
+         question="Who wrote the Harappan script?",
+         expect_refusal=True, expected_source=None, expected_page=None),
+    dict(dataset="History Book", level="L6-Failure Tests", index_path=_HISTORY_INDEX,
+         question="What color were Harappan houses?",
+         expect_refusal=True, expected_source=None, expected_page=None),
+    dict(dataset="History Book", level="L6-Failure Tests", index_path=_HISTORY_INDEX,
+         question="Which Mahajanapada had the largest army?",
+         expect_refusal=True, expected_source=None, expected_page=None),
+    dict(dataset="History Book", level="L6-Failure Tests", index_path=_HISTORY_INDEX,
+         question="How many Harappan kings existed?",
+         expect_refusal=True, expected_source=None, expected_page=None),
+    dict(dataset="History Book", level="L6-Failure Tests", index_path=_HISTORY_INDEX,
+         question="What was the exact cause of Harappan decline?",
+         expect_refusal=True, expected_source=None, expected_page=None),
+]
+
+for _case in CASES:
+    _case.setdefault("level", "Manual Spot-Check")
+    _case.setdefault("must_cite", False)
+    _case.setdefault("expect_refusal", False)
 
 
 def _is_relevant(document, expected_source, expected_page) -> bool:
@@ -126,6 +223,36 @@ def retrieval_metrics(vectorstore, query, expected_source, expected_page, k=15):
     }
 
 
+# Broader than a literal "i don't know" -- Level 6 "Failure Tests" cases
+# (scripts/benchmark.py CASES, is_refusal=True) expect a hedge/refusal
+# phrased any number of ways ("not mentioned", "the document does not
+# specify", "no information about", etc.), not that one exact sentence.
+_REFUSAL_PHRASES = [
+    "i don't know",
+    "not mentioned",
+    "not specified",
+    "not available",
+    "not stated",
+    "not provided",
+    "no information",
+    "does not mention",
+    "does not specify",
+    "does not provide",
+    "does not state",
+    "unclear from",
+    "cannot determine",
+    "unable to determine",
+    "insufficient information",
+    "no mention of",
+    "the document does not",
+    "not indicate",
+]
+
+
+def _is_refusal(answer_lower: str) -> bool:
+    return any(phrase in answer_lower for phrase in _REFUSAL_PHRASES)
+
+
 def generation_metrics(rag_service, case):
     start = time.perf_counter()
     state = rag_service.ask(case["question"], session_id=f"bench-{hash(case['question'])}", return_state=True)
@@ -133,22 +260,34 @@ def generation_metrics(rag_service, case):
 
     answer = state["answer"]
     answer_lower = answer.lower()
-    expected = case["expected_answer_substring"].lower()
+    is_refusal = _is_refusal(answer_lower)
 
-    answer_correct = expected in answer_lower
-    is_refusal = "i don't know" in answer_lower
+    if case.get("expect_refusal"):
+        # Level 6 "Failure Tests": success means the system correctly
+        # declined rather than confidently answering with something
+        # unsupported -- the opposite polarity from every other case.
+        answer_correct = is_refusal
+        potential_hallucination = not is_refusal
+    else:
+        keywords = case["expected_answer_substring"]
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        answer_correct = any(kw.lower() in answer_lower for kw in keywords)
+        potential_hallucination = (not answer_correct) and (not is_refusal)
 
     citation_correct = None
-    if case["expected_page"] is not None:
+    if case.get("expected_page") is not None:
         citation_correct = any(
             c.get("page") == case["expected_page"]
             and (case["expected_source"] is None or c.get("source") == case["expected_source"])
             for c in state["citations"]
         )
+    elif case.get("must_cite"):
+        citation_correct = len(state["citations"]) > 0
 
     return {
         "answer_correct": answer_correct,
-        "potential_hallucination": (not answer_correct) and (not is_refusal),
+        "potential_hallucination": potential_hallucination,
         "citation_correct": citation_correct,
         "latency": latency,
     }
@@ -226,33 +365,42 @@ def main():
 
         results.append({**case, "retrieval": r, "generation": g})
 
-        print(f"{case['dataset']:<14} {case['question'][:60]:<60} "
-              f"answer_correct={g['answer_correct']!s:<5} "
-              f"citation_correct={g['citation_correct']!s:<5} "
+        label = "refusal_correct" if case["expect_refusal"] else "answer_correct"
+        print(f"[{case['level']:<16}] {case['question'][:55]:<55} "
+              f"{label}={g['answer_correct']!s:<5} "
               f"latency={g['latency']:.2f}s")
 
-    print()
-    print("=" * 78)
-    print("AGGREGATE")
-    print("=" * 78)
+    def _report(label, rows):
+        gen = [r["generation"] for r in rows]
+        ret = [r["retrieval"] for r in rows if r["retrieval"] is not None]
 
-    gen = [r["generation"] for r in results]
-    ret = [r["retrieval"] for r in results if r["retrieval"] is not None]
+        print()
+        print("=" * 78)
+        print(label)
+        print("=" * 78)
+        print(f"Questions run:            {len(rows)}")
+        print(f"Answer correctness:       {_pct([g['answer_correct'] for g in gen]):.0f}%")
+        print(f"Potential hallucination:  {_pct([g['potential_hallucination'] for g in gen]):.0f}%  (heuristic proxy, see module docstring)")
+        judgeable = sum(1 for g in gen if g['citation_correct'] is not None)
+        print(f"Citation accuracy:        {_pct([g['citation_correct'] for g in gen]):.0f}%  (of {judgeable} judgeable)")
+        print(f"Mean latency:             {_mean([g['latency'] for g in gen]):.2f}s  (target from the benchmark doc: <2s)")
+        if ret:
+            print(f"Retrieval Hit@1:          {_pct([r['hit@1'] for r in ret]):.0f}%  (of {len(ret)} judgeable)")
+            print(f"Retrieval Hit@3:          {_pct([r['hit@3'] for r in ret]):.0f}%")
+            print(f"Retrieval Recall@5:       {_pct([r['recall@5'] for r in ret]):.0f}%")
+            print(f"Retrieval MRR:            {_mean([r['mrr'] for r in ret]):.2f}")
+            print(f"Retrieval Precision@5:    {_mean([r['precision@5'] for r in ret]):.2f}")
 
-    print(f"Questions run:            {len(results)}")
-    print(f"Answer correctness:       {_pct([g['answer_correct'] for g in gen]):.0f}%")
-    print(f"Potential hallucination:  {_pct([g['potential_hallucination'] for g in gen]):.0f}%  (heuristic: non-refusal + substring miss)")
-    print(f"Citation accuracy:        {_pct([g['citation_correct'] for g in gen]):.0f}%  (of {sum(1 for g in gen if g['citation_correct'] is not None)} judgeable)")
-    print(f"Mean latency:             {_mean([g['latency'] for g in gen]):.2f}s")
+    levels = sorted({r["level"] for r in results})
+    for level in levels:
+        _report(f"LEVEL: {level}", [r for r in results if r["level"] == level])
+
+    _report("OVERALL", results)
+
     print()
-    if ret:
-        print(f"Retrieval Hit@1:          {_pct([r['hit@1'] for r in ret]):.0f}%  (of {len(ret)} judgeable)")
-        print(f"Retrieval Hit@3:          {_pct([r['hit@3'] for r in ret]):.0f}%")
-        print(f"Retrieval Recall@5:       {_pct([r['recall@5'] for r in ret]):.0f}%")
-        print(f"Retrieval MRR:            {_mean([r['mrr'] for r in ret]):.2f}")
-        print(f"Retrieval Precision@5:    {_mean([r['precision@5'] for r in ret]):.2f}")
-    else:
-        print("No retrieval-rank-judgeable cases (need expected_page set).")
+    print("Note: 'Confidence Score' (a target metric in the benchmark doc's")
+    print("Production Benchmark table) is not implemented -- deliberately")
+    print("skipped, see docs/05-roadmap.md v0.5.0 'confidence calibration'.")
 
 
 if __name__ == "__main__":

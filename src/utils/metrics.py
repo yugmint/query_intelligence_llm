@@ -51,6 +51,19 @@ ACTIVE_SESSIONS = Gauge(
     "Current number of in-memory conversation sessions.",
 )
 
+RESPONSE_CACHE_ENTRIES = Gauge(
+    "rag_response_cache_entries",
+    "Current number of entries in the response cache.",
+)
+
+# The actual point of the cache (see docs/05-roadmap.md v0.6.0, token
+# efficiency) -- a hit means a whole workflow invocation (embedding +
+# retrieval + at least one LLM call) was skipped entirely.
+RESPONSE_CACHE_HITS_TOTAL = Counter(
+    "rag_response_cache_hits_total",
+    "Response cache hits -- each one is a full workflow invocation skipped.",
+)
+
 
 def outcome_for_state(state: dict) -> str:
     """

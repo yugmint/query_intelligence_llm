@@ -9,6 +9,7 @@ from src.retrieval.retriever import RetrieverFactory
 from src.retrieval.vectorstore import VectorStoreFactory
 from src.services.citations import build_citations
 from src.utils.chat_history import format_chat_history
+from src.utils.metrics import RESPONSE_CACHE_HITS_TOTAL
 
 from src.workflow.resources import build_resources
 from src.workflow.workflow import build_workflow
@@ -28,6 +29,18 @@ DEFAULT_SESSION_ID = "default"
 # docs/05-roadmap.md and
 # docs/reports/2026-07-26-performance-and-deployment-readiness.md.
 MAX_SESSIONS = int(os.getenv("RAG_MAX_SESSIONS", "1000"))
+
+# Response cache -- see docs/05-roadmap.md v0.6.0 (token efficiency).
+# Only used for queries with no prior chat history in their session
+# (see ask()) -- the same query text can mean something different
+# depending on conversation context (pronoun resolution, "tell me
+# more", etc.), so caching anything mid-conversation risks reusing an
+# answer from the wrong context. Same bounded + LRU-evicted shape as
+# MAX_SESSIONS above, for the same reason (public traffic with varied
+# phrasing shouldn't grow this without limit). Cleared wholesale in
+# reload_index() -- a cached answer against a since-replaced index is a
+# correctness bug, not just staleness.
+MAX_CACHE_ENTRIES = int(os.getenv("RAG_MAX_CACHE_ENTRIES", "500"))
 
 # Graph node names whose LLM output is meant to reach the user -- see
 # ask_stream(). LangGraph's stream_mode="messages" emits token chunks
@@ -65,6 +78,10 @@ class RAGService:
         # bounded + LRU-evicted -- see MAX_SESSIONS above.
         self._sessions: "OrderedDict[str, InMemoryChatMessageHistory]" = OrderedDict()
 
+        # (normalized query, metadata_filter) -> ask() result dict,
+        # bounded + LRU-evicted -- see MAX_CACHE_ENTRIES above.
+        self._response_cache: "OrderedDict[tuple, dict]" = OrderedDict()
+
         # Initialize shared resources (llm/embeddings/vectorstore/retriever --
         # NOT memory, which is per-session, see workflow/resources.py)
         self.resources = build_resources()
@@ -74,6 +91,24 @@ class RAGService:
 
         logger.info("RAG Service initialized successfully.")
         logger.info("=" * 100)
+
+    @staticmethod
+    def _cache_key(query: str, metadata_filter: dict | None) -> tuple:
+        normalized_query = query.strip().lower()
+        filter_key = frozenset(metadata_filter.items()) if metadata_filter else None
+        return (normalized_query, filter_key)
+
+    def _cache_get(self, cache_key: tuple) -> dict | None:
+        cached = self._response_cache.get(cache_key)
+        if cached is not None:
+            self._response_cache.move_to_end(cache_key)
+        return cached
+
+    def _cache_set(self, cache_key: tuple, result: dict) -> None:
+        if cache_key not in self._response_cache and len(self._response_cache) >= MAX_CACHE_ENTRIES:
+            self._response_cache.popitem(last=False)
+        self._response_cache[cache_key] = result
+        self._response_cache.move_to_end(cache_key)
 
     def _set_session(self, session_id: str, memory: InMemoryChatMessageHistory) -> None:
         """
@@ -171,6 +206,25 @@ class RAGService:
         memory = self._get_session_memory(session_id)
         chat_history = format_chat_history(memory.messages)
 
+        # Only cacheable on a session's first turn -- see MAX_CACHE_ENTRIES
+        # above for why chat_history must be empty. ask_stream() is
+        # deliberately not cached (a cached answer can't be replayed as a
+        # believable token stream) -- see docs/05-roadmap.md.
+        cache_key = self._cache_key(query, metadata_filter) if not chat_history else None
+        if cache_key is not None:
+            cached = self._cache_get(cache_key)
+            if cached is not None:
+                logger.info("Response cache hit -- skipping workflow invocation.")
+                RESPONSE_CACHE_HITS_TOTAL.inc()
+                memory.add_user_message(query)
+                memory.add_ai_message(cached["answer"])
+                if not return_state:
+                    return cached["answer"]
+                # The cached dict was built for whichever session first
+                # asked this question -- its own session_id/session_memory
+                # must never leak into a different session's result.
+                return {**cached, "session_id": session_id, "session_memory": memory}
+
         initial_state = {
 
             "query": query,
@@ -209,6 +263,9 @@ class RAGService:
         # concern over the final state, not something any node reads or
         # writes mid-workflow.
         result["citations"] = build_citations(result.get("documents", []))
+
+        if cache_key is not None:
+            self._cache_set(cache_key, result)
 
         if return_state:
             return result
@@ -323,6 +380,14 @@ class RAGService:
 
         return len(self._sessions)
 
+    def cached_response_count(self) -> int:
+        """
+        Current size of the bounded response cache -- see
+        MAX_CACHE_ENTRIES. Same reasoning as active_session_count().
+        """
+
+        return len(self._response_cache)
+
     def reset_memory(self, session_id: str = DEFAULT_SESSION_ID):
         """
         Clears conversation history for one session (default: the
@@ -359,6 +424,11 @@ class RAGService:
         self.resources.bm25_retriever = (
             BM25Factory.build(vectorstore) if vectorstore is not None else None
         )
+
+        # A cached answer keyed against the pre-reload index is a
+        # correctness bug (stale/wrong content), not just staleness --
+        # see MAX_CACHE_ENTRIES.
+        self._response_cache.clear()
 
         if vectorstore is None:
             logger.warning(

@@ -34,7 +34,7 @@ from slowapi.util import get_remote_address
 from src.services.rag_service import DEFAULT_SESSION_ID, RAGService
 from src.utils.auth import require_api_key
 from src.utils.logger import logger
-from src.utils.metrics import ACTIVE_SESSIONS, REQUESTS_TOTAL, outcome_for_state
+from src.utils.metrics import ACTIVE_SESSIONS, REQUESTS_TOTAL, RESPONSE_CACHE_ENTRIES, outcome_for_state
 
 app = FastAPI(title="RAG Query API", version="0.1.0")
 
@@ -228,6 +228,7 @@ def metrics():
     """
 
     ACTIVE_SESSIONS.set(rag.active_session_count())
+    RESPONSE_CACHE_ENTRIES.set(rag.cached_response_count())
 
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 

@@ -6,6 +6,26 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.6.0] — 2026-07-28
+
+**Added:**
+- Response cache. `RAGService` skips the workflow (retrieval + LLM
+  calls) entirely for a repeated first-turn question -- exact-match,
+  bounded + LRU-evicted (`RAG_MAX_CACHE_ENTRIES`, default 500), cleared
+  on `reload_index()`. Mid-conversation questions are never cached
+  (context-dependent). New `rag_response_cache_entries` gauge and
+  `rag_response_cache_hits_total` counter on `/metrics`.
+
+**Fixed:**
+- Caught before shipping: a naive cache-hit return would have handed
+  one session's `session_memory` object to a different session's
+  caller. The returned state's `session_id`/`session_memory` are now
+  always overlaid with the actual asking session's own.
+
+**Validated:** same question asked twice (different sessions) against
+the real history-book index -- 14.51s -> 0.0s on the repeat, identical
+answer, zero LLM calls spent. 9 new tests.
+
 ## [0.5.13] — 2026-07-28
 
 **Added:**

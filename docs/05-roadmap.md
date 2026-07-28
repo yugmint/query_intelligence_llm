@@ -760,19 +760,42 @@ constraint: Groq's free-tier token/request ceilings. Caching is the
 next lever -- avoid spending tokens on a call at all, rather than just
 using the ones we do spend more carefully.
 
-- [ ] **Query/response cache** — skip the LLM call entirely (both
-      retrieval-adjacent and generation) for a repeated or
-      near-duplicate question against the same index. Real questions
-      to resolve when this gets built, not decided yet: exact-match
-      only vs. embedding-similarity match (semantic cache needs its
-      own similarity threshold, which is itself an accuracy/reuse
-      tradeoff); scope (per-session vs. global -- global reuses more
-      but risks leaking one user's phrasing/context into another's
-      answer); invalidation on re-ingest (a cached answer for an index
-      that's since changed is a correctness bug, not just a staleness
-      one -- ties into `ingestion_fixed`'s existing `/reload`
-      notification, which already tells `RAG_Project_1` when an index
-      changed underneath it).
+- [x] **Query/response cache — shipped and validated 2026-07-28.**
+      Resolved the open design questions by scoping down, not building
+      the full speculative version: **exact-match only** (normalized
+      query text -- semantic/embedding-similarity matching adds a real
+      accuracy/reuse tradeoff with no evidence yet that exact-match's
+      hit rate is insufficient; add it if real traffic shows repeated
+      *rephrasings*, not just repeated questions). **Global scope, but
+      only for a session's first turn** (`chat_history` empty) -- the
+      same query text can mean something different mid-conversation
+      (pronoun resolution, "tell me more"), so caching there risks
+      reusing an answer from the wrong context; a first-turn question's
+      answer only depends on the index, which every session shares.
+      **Invalidation: cleared wholesale in `RAGService.reload_index()`**
+      -- simpler and just as correct as versioned keys, since a reload
+      already means "everything before this is stale."
+      `RAGService._response_cache`: bounded + LRU-evicted, same
+      `OrderedDict` pattern as the existing `_sessions` store
+      (`MAX_CACHE_ENTRIES`, default 500). A cache hit still calls
+      `memory.add_user_message`/`add_ai_message` on the *asking*
+      session so multi-turn continuity isn't broken by skipping the
+      workflow, and the returned state's `session_id`/`session_memory`
+      are overlaid with the asker's own -- **a real bug caught before
+      shipping**: naively returning the cached dict verbatim would have
+      handed one session's memory object to a different session's
+      caller. Deliberately not wired into `ask_stream()` -- a cached
+      answer can't be replayed as a believable token stream, and
+      `scripts/benchmark.py` (the only real caller exercised this
+      session) only uses `ask()`. New `rag_response_cache_entries`
+      gauge and `rag_response_cache_hits_total` counter on `/metrics`.
+      9 new tests, including one that specifically guards the
+      session-identity bug above.
+      **Validated against real Groq calls, not just fakes:** same
+      fresh question asked twice (different sessions) against the real
+      history-book index -- first call 14.51s (real LLM round trip),
+      second call **0.0s**, identical correct answer, zero LLM calls
+      spent on the repeat.
 
 ## Unscheduled
 

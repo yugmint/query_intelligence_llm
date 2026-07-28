@@ -719,6 +719,37 @@ Intelligence" as customer-facing phases, but are real, shipped work.
       lowering it further means raising the rate limit or removing the
       remaining Generate_Knowledge call's dependency on it, both
       out of scope here.
+- [x] **History-book chunking-quality investigation — 2026-07-28.**
+      Started from the 97-case benchmark's weak spots (L5-Ambiguous 60%,
+      L5-Cross-document 40%) -- read the actual generated answers and
+      retrieved chunks for every failing case before touching any
+      chunking code, rather than assuming a new chunker was needed.
+      Root cause traced to `ingestion_fixed`'s document classification,
+      not a chunking-algorithm gap: see `ingestion_fixed/docs/05-roadmap.md`
+      v0.2.0 "Numbered-outline TOCs missed by `book` classification".
+      **Full 92-question History-Book-only real re-run on the
+      reclassified index:** 82% -> 85% net (after also fixing a second
+      grading gap this run caught: "Mauryas" vs. the narrow `"mauryan"`
+      keyword, same class as the earlier harappan/indus-valley bug).
+      `_HISTORY_INDEX` in `scripts/benchmark.py` repointed to the
+      reclassified index.
+      **Real, traced regression, not swept under the rug:**
+      L5-Cross-document dropped 40% -> 20% -- "Which civilization had
+      the better drainage system?", correct under the old chunking, now
+      gets refused ("I don't know") under the new one. Confirmed this
+      is one instance of a broader, separate pattern: comparative
+      "which X vs Y" questions get refused even when the retrieved
+      chunks contain the relevant facts (checked directly against real
+      retrieved context, not assumed) -- a generation/prompt-behavior
+      gap, not a retrieval-completeness or chunk-boundary one. Chunk
+      size moved this in *both* directions across different questions,
+      which is itself evidence it's not the right lever here.
+      **Not built:** a heading/section-hierarchy-aware `StructureChunker`
+      (`ingestion_fixed`'s v0.3.0 roadmap item) -- currently just a
+      `RecursiveChunker` alias. Investigating first showed the real gap
+      was classification (wrong profile picked), not the chunking
+      algorithm itself; building a new chunker without that evidence
+      would have been solving the wrong problem.
 
 ## Unscheduled
 

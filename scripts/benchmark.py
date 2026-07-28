@@ -129,7 +129,7 @@ CASES = [
 # a separate task if wanted.
 # ---------------------------------------------------------------------
 
-_HISTORY_INDEX = r"F:\Programming\RAG Projects\ingestion_fixed\local\test_reports\history_book_index_v2"
+_HISTORY_INDEX = r"F:\Programming\RAG Projects\ingestion_fixed\local\test_reports\history_book_index_v3"
 
 CASES += [
     # Level 5 -- Retrieval Robustness / Synonyms subsection. The
@@ -142,7 +142,7 @@ CASES += [
          expected_answer_substring="ashoka", expected_source=None, expected_page=None),
     dict(dataset="History Book", level="L5-Synonyms", index_path=_HISTORY_INDEX,
          question="Which empire first unified much of India?",
-         expected_answer_substring="mauryan", expected_source=None, expected_page=None),
+         expected_answer_substring=["mauryan", "maurya"], expected_source=None, expected_page=None),
     dict(dataset="History Book", level="L5-Synonyms", index_path=_HISTORY_INDEX,
          question="Which civilization used bronze extensively?",
          # "harappan" alone false-negatived a real run: the model

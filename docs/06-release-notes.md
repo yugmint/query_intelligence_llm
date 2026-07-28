@@ -6,6 +6,21 @@ reconstructed from `git log` and grouped into the same phases as §10 of
 `DOCUMENTATION.md`, without version numbers of its own (it was never
 tagged at the time).
 
+## [0.5.12] — 2026-07-28
+
+**Fixed:**
+- `scripts/benchmark.py`: `_HISTORY_INDEX` repointed to the
+  reclassified index (see `ingestion_fixed` v0.4.8 -- numbered-outline
+  TOC detection); one more grading-gap fix ("Mauryas" vs. the narrow
+  `"mauryan"` keyword).
+
+**Result:** full 92-question History-Book-only real re-run: 82% -> 85%
+answer correctness. Mixed underneath, not a clean win -- L1-Exact Fact
++15pp and L5-Ambiguous +20pp are real fixes; L5-Cross-document -20pp is
+a real, traced regression (comparative "which X vs Y" questions get
+refused regardless of chunk size -- a generation-behavior gap, tracked
+separately). See `docs/05-roadmap.md` for the full breakdown.
+
 ## [0.5.11] — 2026-07-28
 
 **Fixed:**

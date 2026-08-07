@@ -88,6 +88,10 @@ if you're starting from a fresh clone with no index built yet.)
 
 This README covers the feature list and roadmap. For the technical detail:
 
+- [`SETUP.md`](SETUP.md) — clone-to-running-demo quickstart for a new
+  developer: dependencies, credentials, getting a working FAISS index
+  (gitignored, needs a manual copy — the guide explains why and how),
+  running both APIs plus the frontend, and known gotchas.
 - [`DOCUMENTATION.md`](DOCUMENTATION.md) — full architecture and
   module-by-module reference, including the history of the ingestion
   pipeline that used to live in this repo.

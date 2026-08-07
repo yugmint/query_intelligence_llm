@@ -79,27 +79,13 @@ pre-existing naming quirk in the code, not a typo here.)
 ## 5. Get a working FAISS index — the one real gotcha
 
 **The FAISS index and the source PDF are both gitignored — cloning the
-repos alone does *not* get you a working index.** Two ways to get one:
+repos alone does *not* get you a working index.** Two ways to get one.
 
-### Option A — copy the pre-built index (fastest, matches the demo exactly)
+### Option A — rebuild it from the source PDF (recommended)
 
-Ask whoever prepared the demo to copy you, ideally in one go:
-
-- `ingestion_fixed/local/test_reports/history_book_index_v3/` (the
-  `.faiss` + `.pkl` files) — this is the exact, already-fixed index
-  used in the last demo run.
-- `frontend/` (the chat UI — see the note in step 2, this isn't in
-  either git repo).
-- The source PDF, if you also want to test re-ingestion (see Option B).
-
-Drop the index folder anywhere on your machine and point
-`FAISS_INDEX_PATH` at it in step 6. Drop `frontend/` anywhere too —
-it's a standalone static folder, just open `index.html` in a browser.
-
-### Option B — rebuild it yourself from the source PDF
-
-If you have the source PDF (`ede93-history.pdf`) but not a pre-built
-index:
+Ask whoever prepared the demo for the source PDF (`ede93-history.pdf`)
+and `frontend/` (the chat UI — see the note in step 2, this isn't in
+either git repo). Then:
 
 ```bash
 cd ingestion_fixed
@@ -107,10 +93,23 @@ python -m src.ingestion.pipeline path/to/ede93-history.pdf
 ```
 
 This writes a fresh index to `vectorstore/` (or wherever
-`INGESTION_INDEX_PATH` points, see step 6) by default. This is slower
-and — if the ingestion code has changed since the index you're trying
-to match was built — may not produce byte-identical results, so prefer
-Option A when you specifically need to match an existing demo.
+`INGESTION_INDEX_PATH` points, see step 6). **Confirmed reproducible**
+against the exact index used in the last demo run: same 421 chunks,
+same `document_type=book` classification (confidence 0.85), same
+chunk_size (800) -- as long as `ingestion_fixed`'s classification/
+chunking code hasn't changed since (check `git log -1 -- src/ingestion`
+if you want to be sure). A single PDF is also a much smaller thing to
+hand someone than a binary FAISS index folder, and running this
+yourself doubles as a real smoke test that your ingestion setup
+actually works.
+
+### Option B — copy the pre-built index instead
+
+If you'd rather not depend on reproducibility (e.g. the source has
+since changed and you specifically need last week's snapshot), ask for
+`ingestion_fixed/local/test_reports/history_book_index_v3/` (the
+`.faiss` + `.pkl` files) directly and drop it anywhere on your
+machine.
 
 ## 6. Run both APIs
 

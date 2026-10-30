@@ -1,6 +1,24 @@
 # Intelligent Document AI
 
-> A production-ready **Document Intelligence System** built with **LangGraph**, **LangChain**, and **FAISS** for intelligent document understanding, contextual retrieval, and conversational AI.
+> A **Document Intelligence System** built with **LangGraph**, **LangChain** and **FAISS**: guardrails, intent routing, hybrid retrieval with reranking, cited answers and conversational memory over your PDFs.
+
+![LangGraph workflow](docs/assets/workflow.svg)
+
+## Results so far
+
+Measured on real documents; full write-ups are in [`docs/reports/`](docs/reports/).
+
+| What was measured | Result | Report |
+|---|---|---|
+| Cross-encoder reranking (FAISS top-15 → top-3), 20 questions over two research papers | Fully correct answers **11/20 → 16/20**; false refusals **5 → 0**; confidently wrong **1 → 0** | [reranking validation](docs/reports/2026-07-24-reranking-validation.md) |
+| Cost of that reranking step | **~700 ms** per query on CPU, ~125–180 ms on a GTX 1650 | [performance](docs/reports/2026-07-26-performance-and-deployment-readiness.md) |
+| End-to-end knowledge query | **~0.9–1.1 s** (greetings that skip retrieval: ~0.3 s) | [performance](docs/reports/2026-07-26-performance-and-deployment-readiness.md) |
+| 117-page history study guide, 92–97 graded questions | Answer correctness **82% → 85%**; mean latency **25.0 s → 12.7 s** after fixing intent classification | [full benchmark](docs/reports/2026-07-28-history-book-full-benchmark.md) |
+| Repeated first-turn question | **14.5 s → 0 s**, zero LLM calls (response cache) | [full benchmark](docs/reports/2026-07-28-history-book-full-benchmark.md) |
+
+Small samples, single-machine timings. Each report lists its own caveats.
+
+**Status: pre-MVP.** Correctness is strong. Before any public deployment, the open gaps are API rate limiting, auth that fails open when `RAG_API_KEY` is unset, an unbounded session store, and monitoring (see the [deployment-readiness report](docs/reports/2026-07-26-performance-and-deployment-readiness.md)).
 
 ---
 
@@ -12,7 +30,7 @@ The project follows a modular architecture where every stage of the workflow is 
 
 Current implementation focuses on:
 
-* Production-ready LangGraph workflow
+* LangGraph workflow
 * Modular node architecture
 * Input Guardrails
 * Intent Detection
@@ -430,37 +448,26 @@ Tested on:
 * Evaluation Framework
 * Structured Logging
 * Production Resource Management
-
----
-
-## Phase 2 — Intelligence Layer (In Progress)
-
 * Query Rewriting
-* Metadata-aware Retrieval
-* Reranking
-* Better Chunk Selection
-
----
-
-## Phase 3 — Advanced Retrieval
-
-* Hybrid Search
-* BM25 + Dense Retrieval
-* Metadata Filtering
+* Metadata-aware Retrieval and Metadata Filtering
+* Cross-encoder Reranking
+* Hybrid Search (BM25 + dense, Reciprocal Rank Fusion)
 * Parent-Child Retrieval
-* Context Compression
+* Source Citations (provenance of the chunks used)
+* Streaming Responses
+* Response Cache
+* API Authentication (shared key)
 
 ---
 
-## Phase 4 — Enterprise Features
+## Next
 
-* Source Citations
-* Streaming Responses
+* Better Chunk Selection
+* Context Compression
 * Multi-document Retrieval
-* Observability
-* Metrics Dashboard
-* API Authentication
+* Observability and Metrics Dashboard
 * Rate Limiting
+* Auth that fails closed when no key is configured
 
 ---
 
@@ -480,9 +487,9 @@ Tested on:
 ## Clone Repository
 
 ```bash
-git clone "https://github.com/yugmint/query_intellience_llm.git"
+git clone "https://github.com/yugmint/query_intelligence_llm.git"
 
-cd Intelligent-Document-AI
+cd query_intelligence_llm
 ```
 
 ---
@@ -554,7 +561,7 @@ pytest tests/ -v
 ```
 
 Covers the guardrail validator chain and every workflow node, including
-reranking (64 tests, all mocked LLM/retriever/reranker, no real network
+reranking (200+ tests, all mocked LLM/retriever/reranker, no real network
 calls); see `docs/03-development-guide.md`.
 
 ## Run Evaluation
@@ -580,13 +587,15 @@ Production RAG Workflow
 
 Phase 2
 Intelligence Layer
-⏳ In Progress
+✔ Completed
 
 Phase 3
 Advanced Retrieval
+✔ Mostly completed (context compression pending)
 
 Phase 4
 Enterprise Features
+⏳ In Progress (citations, streaming, auth done)
 
 Phase 5
 Agentic AI Platform

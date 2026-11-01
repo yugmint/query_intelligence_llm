@@ -120,14 +120,14 @@ This README covers the feature list and roadmap. For the technical detail:
   [release notes](docs/06-release-notes.md),
   [design decisions](docs/07-design-decisions.md).
 
-This project pairs with a separate ingestion project
-(`ingestion_fixed`, a sibling repo) that builds the FAISS index this
-project reads from — see `docs/01-architecture.md` for how the two
-connect, and `DOCUMENTATION.md` §8 for why ingestion no longer lives here.
+This project pairs with a separate ingestion project,
+[smart-document-ingestion-engine](https://github.com/yugmint/smart-document-ingestion-engine),
+which builds the FAISS index this project reads from — see
+`docs/01-architecture.md` for how the two connect, and `DOCUMENTATION.md` §8
+for why ingestion no longer lives here.
 
-**Status:** this repo is still pre-MVP and under active development —
-unlike `ingestion_fixed`, which is considered stable. See `docs/05-roadmap.md`
-for the concrete, current gap list.
+**Status:** this repo is still pre-MVP and under active development.
+See `docs/05-roadmap.md` for the concrete, current gap list.
 
 ---
 
@@ -532,9 +532,9 @@ python main.py
 
 ## Run as a Standalone API
 
-For deployment alongside `ingestion_fixed`'s own API, sharing one FAISS
-index via a mounted volume (see the top-level `docker-compose.yml`, one
-directory up):
+To deploy alongside the API from
+[smart-document-ingestion-engine](https://github.com/yugmint/smart-document-ingestion-engine),
+share one FAISS index between them via a mounted volume:
 
 ```bash
 RAG_API_KEY=your-shared-secret uvicorn src.api:app --reload --port 8001

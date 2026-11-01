@@ -7,9 +7,12 @@ it works.
 
 Two repos, two jobs:
 
-- **`ingestion_fixed`** — turns a document (PDF/txt/html/docx) into a
-  FAISS vector index.
-- **`RAG_Project_1`** — answers questions against that index.
+- **`smart-document-ingestion-engine`** (local folder: `ingestion_fixed`)
+  — turns a document (PDF/txt/html/docx) into a FAISS vector index.
+- **`query_intelligence_llm`** (local folder: `RAG_Project_1`) — answers
+  questions against that index.
+
+The commands below use the local folder names, which step 2 sets for you.
 
 They're independent git repos coupled only by sharing one FAISS index
 directory on disk (see `docker-compose.yml` for the containerized
@@ -30,7 +33,7 @@ which is what's actually been used for demo prep so far).
 ## 2. Clone both repos
 
 ```bash
-git clone https://github.com/yugmint/query_intellience_llm.git RAG_Project_1
+git clone https://github.com/yugmint/query_intelligence_llm.git RAG_Project_1
 git clone https://github.com/yugmint/smart-document-ingestion-engine.git ingestion_fixed
 ```
 
@@ -38,8 +41,8 @@ Put them side by side in the same parent folder — some tooling
 (`docker-compose.yml`, path references in docs) assumes that layout.
 
 **Important — this alone does not get you the demo UI.** The
-`frontend/` folder (the actual chat interface used in demos),
-`docker-compose.yml`, and this `SETUP.md` all live in a shared parent
+`frontend/` folder (the actual chat interface used in demos) and
+`docker-compose.yml` live in a shared parent
 folder that is *not* a git repo and isn't tracked anywhere — `git
 clone` of the two repos above gets you both backend services and
 nothing else. You need these copied to you directly (see step 5,

@@ -1,4 +1,4 @@
-# RAG_Project_1 ("Intelligent Document AI") — Technical Documentation
+# query_intelligence_llm ("Intelligent Document AI") — Technical Documentation
 
 > Companion reference to [`README.md`](README.md) (feature list, roadmap, quick
 > start). This document covers **actual architecture, module reference, data
@@ -8,7 +8,7 @@
 > you're trying to understand "how does a document get from a PDF into an
 > answer," read §8 first.
 
-Repo remote: `github.com/yugmint/query_intellience_llm`
+Repo remote: `github.com/yugmint/query_intelligence_llm`
 
 ---
 
@@ -17,7 +17,9 @@ Repo remote: `github.com/yugmint/query_intellience_llm`
 A LangGraph-orchestrated RAG chatbot: guardrails → intent detection → (query
 rewrite →) retrieval → generation → memory. It is the retrieval/generation
 half of a system whose ingestion half now lives in the separate
-[`ingestion_fixed`](../ingestion_fixed/DOCUMENTATION.md) project (see §8).
+[`smart-document-ingestion-engine`](https://github.com/yugmint/smart-document-ingestion-engine/blob/main/DOCUMENTATION.md) project (see §8).
+Its local folder is `ingestion_fixed`, and this repo's is `RAG_Project_1`;
+the commands and project history below use those names.
 
 An older, pre-LangGraph incarnation of this same project once had its README
 preserved at `local/project_history/README_v3.md` — since deleted (an
@@ -243,10 +245,10 @@ detection, role validation.
 
 This is the part the codebase itself doesn't document anywhere, and the part
 most likely to confuse a new contributor: **there is currently no working
-ingestion code inside `RAG_Project_1`.** `src/retrieval/vectorstore.py` only
+ingestion code inside this project.** `src/retrieval/vectorstore.py` only
 loads an existing FAISS index (`FAISS.load_local`); nothing in the active
-`src/` tree can build one. Ingestion has been fully spun out into the sibling
-[`ingestion_fixed`](../ingestion_fixed/DOCUMENTATION.md) project.
+`src/` tree can build one. Ingestion has been fully spun out into the separate
+[`smart-document-ingestion-engine`](https://github.com/yugmint/smart-document-ingestion-engine/blob/main/DOCUMENTATION.md) project.
 
 Here is how it got there, oldest to newest.
 
@@ -443,8 +445,8 @@ python main.py                      # interactive chat
 python -m src.evaluation.runner     # run evaluation suite → src/evaluation/results/
 ```
 
-To (re)build the vector index this app reads from, use the sibling
-[`ingestion_fixed`](../ingestion_fixed/DOCUMENTATION.md) project — see its
+To (re)build the vector index this app reads from, use the separate
+[`smart-document-ingestion-engine`](https://github.com/yugmint/smart-document-ingestion-engine/blob/main/DOCUMENTATION.md) project — see its
 `DOCUMENTATION.md` §7 for the CLI/Docker usage — then point
 `src/retrieval/config.py`'s `FAISS_PATH` at the resulting index directory
 (see the stale-index note in §8).
@@ -455,7 +457,7 @@ To (re)build the vector index this app reads from, use the sibling
 
 Alongside `main.py`'s interactive CLI, a FastAPI service exposes the RAG
 workflow over HTTP — meant to be deployed as a standalone service, paired
-with `ingestion_fixed`'s own API, both pointed at the same shared FAISS
+with `smart-document-ingestion-engine`'s own API, both pointed at the same shared FAISS
 index directory (§8's stale-index problem is exactly what this is meant to
 finally fix, going forward). This is additive; `main.py` still works
 unchanged.
@@ -548,9 +550,9 @@ docker build -t rag-api .
 docker run -p 8001:8001 -e GROQ_API_KEY=... -e RAG_API_KEY=... -v $(pwd)/data:/data rag-api
 ```
 
-See the top-level `docker-compose.yml` (one directory up, alongside
-`ingestion_fixed/`) for running both services together against a shared
-named volume. **Bootstrap order matters:** this service calls
+The `docker-compose.yml` for running both services together against a
+shared named volume lives in the shared parent folder, not in this repo
+(see `SETUP.md`, step 2). **Bootstrap order matters:** this service calls
 `FAISS.load_local()` at startup and will fail to start against an empty
 shared volume — ingest at least one document via the ingestion API first.
 See the compose file's comments for the full sequence.
